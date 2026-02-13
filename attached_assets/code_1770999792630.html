@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ThreadForge: AI Thread Generator</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "threads-bg": "#101010",
+                        "threads-surface": "#181818",
+                        "threads-border": "#333333",
+                        "threads-text": "#F3F5F7",
+                        "threads-subtext": "#777777",
+                        "threads-accent": "#FFFFFF",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "1rem", "2xl": "1.5rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            background-color: #000000;
+            color: #F3F5F7;
+        }
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #000000; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #333333; 
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555555; 
+        }
+        .threads-input {
+            background-color: transparent;
+            border: 1px solid #333333;
+            transition: border-color 0.2s ease;
+            color: #F3F5F7;
+        }
+        .threads-input:focus {
+            border-color: #777777;
+            box-shadow: none;
+            outline: none;
+        }input[type=range] {
+            -webkit-appearance: none; 
+            background: transparent; 
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #FFFFFF;
+            cursor: pointer;
+            margin-top: -7px; 
+            border: 2px solid #000000;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 2px;
+            cursor: pointer;
+            background: #333333;
+        }
+        .thread-line {
+            width: 2px;
+            background-color: #333333;
+            position: absolute;
+            top: 56px;
+            bottom: -24px;
+            left: 23px;z-index: 0;
+        }
+        .last-item .thread-line {
+            display: none;
+        }
+    </style>
+</head>
+<body class="font-display h-screen overflow-hidden flex flex-col">
+<header class="h-16 border-b border-threads-border bg-black flex items-center justify-between px-6 shrink-0 z-20">
+<div class="flex items-center gap-4 justify-center w-full relative">
+<div class="absolute left-0 top-1/2 -translate-y-1/2">
+<span class="material-symbols-outlined text-white text-[32px]">alternate_email</span>
+</div>
+<nav class="hidden md:flex gap-8">
+<button class="text-white"><span class="material-symbols-outlined text-[28px] filled">home</span></button>
+<button class="text-threads-subtext hover:text-white transition-colors"><span class="material-symbols-outlined text-[28px]">search</span></button>
+<button class="text-threads-subtext hover:text-white transition-colors"><span class="material-symbols-outlined text-[28px]">edit_note</span></button>
+<button class="text-threads-subtext hover:text-white transition-colors"><span class="material-symbols-outlined text-[28px]">favorite</span></button>
+<button class="text-threads-subtext hover:text-white transition-colors"><span class="material-symbols-outlined text-[28px]">person</span></button>
+</nav>
+<div class="absolute right-0 top-1/2 -translate-y-1/2">
+<button class="text-white hover:bg-threads-surface p-2 rounded-full transition-colors">
+<span class="material-symbols-outlined text-[24px]">menu</span>
+</button>
+</div>
+</div>
+</header>
+<div class="flex flex-1 overflow-hidden">
+<aside class="w-[380px] bg-black border-r border-threads-border flex flex-col shrink-0 z-10 overflow-y-auto hidden lg:flex">
+<div class="p-8 space-y-10">
+<div>
+<h2 class="text-xl font-bold text-white mb-2">ThreadForge Generator</h2>
+<p class="text-sm text-threads-subtext">Craft your narrative.</p>
+</div>
+<div class="space-y-3">
+<div class="flex justify-between items-center">
+<label class="text-sm font-semibold text-white">Source Material</label>
+<span class="text-xs text-threads-subtext hover:text-white cursor-pointer transition-colors">Import URL</span>
+</div>
+<textarea class="w-full h-40 threads-input rounded-xl p-4 text-sm placeholder-threads-subtext resize-none" placeholder="Start a thread..."></textarea>
+</div>
+<div class="space-y-3">
+<label class="text-sm font-semibold text-white">Vibe</label>
+<div class="relative">
+<select class="w-full threads-input rounded-xl p-4 pr-10 text-sm appearance-none cursor-pointer bg-black text-white">
+<option>Casual Conversation</option>
+<option>Deep Dive Analysis</option>
+<option>Minimalist Story</option>
+<option>Controversial Take</option>
+</select>
+<div class="absolute right-4 top-4 pointer-events-none text-threads-subtext">
+<span class="material-symbols-outlined text-xl">expand_more</span>
+</div>
+</div>
+</div>
+<div class="space-y-5">
+<div class="flex justify-between items-center">
+<label class="text-sm font-semibold text-white">Thread Length</label>
+<span class="text-sm font-mono text-white">5</span>
+</div>
+<div class="px-1">
+<input class="w-full" max="10" min="1" type="range" value="5"/>
+</div>
+</div>
+<div class="space-y-3">
+<label class="text-sm font-semibold text-white">Directives</label>
+<input class="w-full threads-input rounded-xl p-4 text-sm placeholder-threads-subtext" placeholder="e.g. strict brevity, no hashtags" type="text"/>
+</div>
+</div>
+<div class="mt-auto p-8 border-t border-threads-border bg-black sticky bottom-0">
+<button class="w-full bg-white hover:bg-gray-200 text-black font-semibold py-3 px-6 rounded-full transition-all flex items-center justify-center gap-2 text-sm tracking-wide">
+                    Initialize Generation
+                </button>
+</div>
+</aside>
+<main class="flex-1 bg-black relative overflow-hidden flex flex-col items-center">
+<div class="flex-1 w-full overflow-y-auto px-4 py-8 md:p-12 scroll-smooth">
+<div class="max-w-[600px] mx-auto space-y-0 relative">
+<div class="flex gap-4 relative group pb-4">
+<div class="flex flex-col items-center shrink-0 w-12 relative">
+<div class="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center font-bold text-lg z-10 overflow-hidden">
+<img alt="User Avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAPDElLrglMvKAirzXfOcUmRbo3NGSmB7hMXV68EQTFqEmH56xFMGnzCITqAfIjyJGrqatHQNR93-4ARGh9EPhNFveQC-dpdduAt29sVErwLFA8ecI75uxUrr2lCrRTltry4646DW38TMff1nmG4iKVSm9AWgdmJu4f5SP_x-nI5qhjmxFTUa4_jXSwAD93XWTUaNfAbA09UAtYXn8qFwBuM2lrtSWXKCyxAjZi9DXh--4bFIySMmzQd7zwFnsXqwA_tS23Ym37V9A"/>
+</div>
+<div class="thread-line"></div>
+</div>
+<div class="flex-1 pt-1">
+<div class="flex justify-between items-start mb-1">
+<div class="flex items-center gap-2">
+<span class="font-semibold text-sm text-white">threadforge.ai</span>
+<span class="material-symbols-outlined text-[14px] text-blue-400 filled" style="font-variation-settings: 'FILL' 1">verified</span>
+<span class="text-threads-subtext text-sm ml-1">2m</span>
+</div>
+<button class="text-threads-subtext hover:text-white">
+<span class="material-symbols-outlined text-lg">more_horiz</span>
+</button>
+</div>
+<p class="text-white text-[15px] leading-relaxed mb-3">
+                                AI isn't going to replace you. A person using AI will. <br/><br/>
+                                But 99% of people are using it wrong. They treat it like Google search. Here is the framework I use to 10x my productivity 🧵👇
+                            </p>
+<div class="flex gap-5 mt-3 text-white">
+<button class="hover:bg-white/10 p-1 -ml-1 rounded-full transition-colors"><span class="material-symbols-outlined text-[20px]">favorite</span></button>
+<button class="hover:bg-white/10 p-1 rounded-full transition-colors"><span class="material-symbols-outlined text-[20px] -scale-x-100">mode_comment</span></button>
+<button class="hover:bg-white/10 p-1 rounded-full transition-colors"><span class="material-symbols-outlined text-[20px]">cached</span></button>
+<button class="hover:bg-white/10 p-1 rounded-full transition-colors"><span class="material-symbols-outlined text-[20px] -rotate-45">send</span></button>
+</div>
+</div>
+</div>
+<div class="flex gap-4 relative group pb-4">
+<div class="flex flex-col items-center shrink-0 w-12 relative">
+<div class="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center font-bold text-lg z-10 overflow-hidden">
+<img alt="User Avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAYlKnILJdjWQOK0V9c_0apM-s5TJVOtnJ3EpzHAfv2_TbSa2uPKSjnJqhEjBhwWBcoeTsgstRR1OBxhMn8CG2CS1jgm7MRvlyCVEIg-l8Sw4Ly3ZAdab7QUfKxQ6NYvlHTJoJ_zAtUwoW1hH4atqHO7O9TXq-AJlY9c8EEqJDTeP3H_Vj27Ry78hVt78WbNbQmYQEqB133H179a98HK2zbf1mTqzNx-myRMqipZ1ugoqRGqG-1eszRzqbgQHWEhaEt_YZ6UhOPor8"/>
+</div>
+<div class="thread-line"></div>
+</div>
+<div class="flex-1 pt-1">
+<div class="flex justify-between items-start mb-1">
+<div class="flex items-center gap-2">
+<span class="font-semibold text-sm text-white">threadforge.ai</span>
+<span class="text-threads-subtext text-sm ml-1">2m</span>
+</div>
+<button class="text-threads-subtext hover:text-white">
+<span class="material-symbols-outlined text-lg">more_horiz</span>
+</button>
+</div>
+<p class="text-white text-[15px] leading-relaxed mb-3">
+                                1. Context Setting<br/><br/>
+                                Most prompts fail because they lack context. Don't just say "Write an email."<br/>
+                                Say "Act as a Senior Copywriter. Write a persuasive email to a cold lead who just downloaded our ebook."
+                            </p>
+<div class="flex gap-5 mt-3 text-white">
+<button class="hover:bg-white/10 p-1 -ml-1 rounded-full transition-colors"><span class="material-symbols-outlined text-[20px]">favorite</span></button>
+<button class="hover:bg-white/10 p-1 rounded-full transition-colors"><span class="material-symbols-outlined text-[20px] -scale-x-100">mode_comment</span></button>
+<button class="hover:bg-white/10 p-1 rounded-full transition-colors"><span class="material-symbols-outlined text-[20px]">cached</span></button>
+<button class="hover:bg-white/10 p-1 rounded-full transition-colors"><span class="material-symbols-outlined text-[20px] -rotate-45">send</span></button>
+</div>
+</div>
+</div>
+<div class="flex gap-4 relative group pb-4">
+<div class="flex flex-col items-center shrink-0 w-12 relative">
+<div class="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center font-bold text-lg z-10 overflow-hidden">
+<img alt="User Avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBWIjLCBvtQGj5aAFoegqrbHSzsOpO1YC81J-42c-6QxnyjgLW61c9LvlbVHVytnca19iIcOfMaQUp6yZoylf5zj8ZHOHZpoi0IHTOSfx60eXh74rXRYXGVe6d4Yx3HzQ_G1K2XJCTSQakHy8l0ODKArsJ1SE4dhCrNWFnE8NT5FcqqUGiaAGd3JsqIKhJ4LJobwKa6FElbvPkBZxG4BPHmcSK421AUAJGvhplM1K48R105b0HYcm0YHsgfNe3yDmgA9FRz0HCK3Uc"/>
+</div>
+<div class="thread-line"></div>
+</div>
+<div class="flex-1 pt-1">
+<div class="flex justify-between items-start mb-1">
+<div class="flex items-center gap-2">
+<span class="font-semibold text-sm text-white">threadforge.ai</span>
+<span class="text-threads-subtext text-sm ml-1">2m</span>
+</div>
+<button class="text-threads-subtext hover:text-white">
+<span class="material-symbols-outlined text-lg">more_horiz</span>
+</button>
+</div>
+<p class="text-white text-[15px] leading-relaxed mb-3">
+                                2. Iterative Refinement<br/><br/>
+                                The first output is rarely the best. Treat the AI as a junior intern. Give feedback.<br/>
+                                "Make it punchier."<br/>
+                                "Shorten the sentences."<br/>
+                                "Use a more empathetic tone."
+                            </p>
+<div class="flex gap-5 mt-3 text-white">
+<button class="hover:bg-white/10 p-1 -ml-1 rounded-full transition-colors"><span class="material-symbols-outlined text-[20px]">favorite</span></button>
+<button class="hover:bg-white/10 p-1 rounded-full transition-colors"><span class="material-symbols-outlined text-[20px] -scale-x-100">mode_comment</span></button>
+<button class="hover:bg-white/10 p-1 rounded-full transition-colors"><span class="material-symbols-outlined text-[20px]">cached</span></button>
+<button class="hover:bg-white/10 p-1 rounded-full transition-colors"><span class="material-symbols-outlined text-[20px] -rotate-45">send</span></button>
+</div>
+</div>
+</div>
+<div class="flex gap-4 relative group pb-4">
+<div class="flex flex-col items-center shrink-0 w-12 relative">
+<div class="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center font-bold text-lg z-10 overflow-hidden">
+<img alt="User Avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAXFEPK6_kHyb6t59mN5Jc3c50OCwIRn7JqXcALByxNv3Nn1Yq3o9ms_6CPidF1FY82uTO0KcxmDNXnz7WBMnYqsuP9-hZmvtRON8hiN9DgTHGtJR85DA4XQsKMD76CHj_tebsEI1vLeMHe2v2oz2HgzTo90QXgEAaQAObFvwt_ZhJzmRoc57a6D8jjXwxaZ6lZkMVJ4nCNTbzKRrnVSsBd15dKadN7y-SjgsrLRwULAU_RfUCTPp5KXzPay0eNomQ7ynhh-piJoeg"/>
+</div>
+<div class="thread-line"></div>
+</div>
+<div class="flex-1 pt-1">
+<div class="flex justify-between items-start mb-1">
+<div class="flex items-center gap-2">
+<span class="font-semibold text-sm text-white">threadforge.ai</span>
+<span class="text-threads-subtext text-sm ml-1">2m</span>
+</div>
+<div class="flex gap-2">
+<button class="text-xs text-threads-subtext hover:text-white">Cancel</button>
+<button class="text-xs font-semibold text-white">Post</button>
+</div>
+</div>
+<div class="border-l-2 border-threads-subtext/20 pl-4 py-1">
+<textarea class="w-full bg-transparent text-white text-[15px] leading-relaxed resize-none focus:outline-none h-24 placeholder-threads-subtext" spellcheck="false">3. The Constraint Method
+AI tends to ramble. Force it to be concise.
+Prompt addition: "Explain this to a 5-year-old in under 50 words."</textarea>
+</div>
+<div class="flex gap-5 mt-3 text-threads-subtext">
+<span class="material-symbols-outlined text-[20px]">image</span>
+<span class="material-symbols-outlined text-[20px]">gif_box</span>
+<span class="material-symbols-outlined text-[20px]">tag</span>
+<span class="material-symbols-outlined text-[20px]">mic</span>
+</div>
+</div>
+</div>
+<div class="flex gap-4 relative group last-item pb-12">
+<div class="flex flex-col items-center shrink-0 w-12 relative">
+<div class="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center font-bold text-lg z-10 overflow-hidden">
+<img alt="User Avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBcaxIPUzRCHI-GNrjOgCrccOVAYry0ZoLFZjV-TysqNIne4F0Xy4lcr7H-Zv-IbQkQCpQYpksB2R5SwlZ8RvqhY-eBtpGfQ4pE6fouBo3USjf6v9fGts2tq6WajIMigcIjROWA2TameA5Sw6Cnl34_jPWhVjOKnchKiQZMdjCrAYtSk7WRP8BXKJTiBPOfUDMPaeh2NkXivtmeXFe0GmSfS9Anzgyxl2zkh58-iorahaC0VbMBwOQ84xQEIPSzlUSbbXqXoAKopBs"/>
+</div>
+<div class="thread-line"></div>
+</div>
+<div class="flex-1 pt-1">
+<div class="flex justify-between items-start mb-1">
+<div class="flex items-center gap-2">
+<span class="font-semibold text-sm text-white">threadforge.ai</span>
+<span class="text-threads-subtext text-sm ml-1">2m</span>
+</div>
+<button class="text-threads-subtext hover:text-white">
+<span class="material-symbols-outlined text-lg">more_horiz</span>
+</button>
+</div>
+<p class="text-white text-[15px] leading-relaxed mb-3">
+                                TL;DR:<br/>
+                                1. Set Context (Act as)<br/>
+                                2. Refine Iteratively (Junior Intern)<br/>
+                                3. Add Constraints (Be Concise)<br/><br/>
+                                If you found this helpful, follow me @threadforge for more AI tips. Like/Repost the first post to share!
+                            </p>
+<div class="flex gap-5 mt-3 text-white">
+<button class="hover:bg-white/10 p-1 -ml-1 rounded-full transition-colors"><span class="material-symbols-outlined text-[20px]">favorite</span></button>
+<button class="hover:bg-white/10 p-1 rounded-full transition-colors"><span class="material-symbols-outlined text-[20px] -scale-x-100">mode_comment</span></button>
+<button class="hover:bg-white/10 p-1 rounded-full transition-colors"><span class="material-symbols-outlined text-[20px]">cached</span></button>
+<button class="hover:bg-white/10 p-1 rounded-full transition-colors"><span class="material-symbols-outlined text-[20px] -rotate-45">send</span></button>
+</div>
+</div>
+</div>
+<div class="flex pl-16 pt-2 pb-24">
+<button class="text-threads-subtext hover:text-white transition-colors text-sm flex items-center gap-2">
+<div class="w-10 h-10 rounded-full border border-threads-border flex items-center justify-center">
+<span class="material-symbols-outlined text-sm">add</span>
+</div>
+                            Add to thread
+                        </button>
+</div>
+</div>
+</div>
+</main>
+</div>
+
+</body></html>
