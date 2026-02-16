@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
+import { validateConfig } from "./threads-api";
 
 const app = express();
 const httpServer = createServer(app);
@@ -64,11 +65,18 @@ app.use((req, res, next) => {
   await setupAuth(app);
   registerAuthRoutes(app);
 
-  const { seedDatabase } = await import("./seed");
-  try {
-    await seedDatabase();
-  } catch (e) {
-    console.error("Seed error (non-fatal):", e);
+  const threadsConfig = validateConfig();
+  if (!threadsConfig.valid) {
+    console.warn("[startup] Threads API:", threadsConfig.errors.join(", "));
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    const { seedDatabase } = await import("./seed");
+    try {
+      await seedDatabase();
+    } catch (e) {
+      console.error("Seed error (non-fatal):", e);
+    }
   }
 
   await registerRoutes(httpServer, app);

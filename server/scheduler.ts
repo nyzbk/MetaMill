@@ -42,7 +42,7 @@ async function processDueJobs() {
         await executeJob(claimed);
       } catch (err: any) {
         console.error(`[scheduler] Job ${claimed.id} failed:`, err.message);
-        await storage.updateScheduledJob(claimed.id, {
+        await storage.updateJobInternal(claimed.id, {
           status: claimed.isRecurring ? "recurring" : "failed",
           lastRunAt: new Date(),
           lastError: err.message,
@@ -60,9 +60,9 @@ async function processDueJobs() {
 async function executeJob(job: ScheduledJob) {
   console.log(`[scheduler] Executing job ${job.id}: "${job.topic || 'template-based'}"`);
 
-  await storage.updateScheduledJob(job.id, { status: "running" });
+  await storage.updateJobInternal(job.id, { status: "running" });
 
-  const account = await storage.getAccount(job.accountId);
+  const account = await storage.getAccountById(job.accountId);
   if (!account) {
     throw new Error(`Аккаунт #${job.accountId} не найден`);
   }
@@ -75,7 +75,7 @@ async function executeJob(job: ScheduledJob) {
   const branchCount = job.branches || 5;
 
   if (job.templateId) {
-    const template = await storage.getTemplate(job.templateId);
+    const template = await storage.getTemplateById(job.templateId);
     if (!template) throw new Error(`Шаблон #${job.templateId} не найден`);
 
     try {
@@ -144,7 +144,7 @@ async function executeJob(job: ScheduledJob) {
       nextRun = new Date(Date.now() + intervalMs);
     }
 
-    await storage.updateScheduledJob(job.id, {
+    await storage.updateJobInternal(job.id, {
       status: "recurring",
       lastRunAt: new Date(),
       nextRunAt: nextRun,
@@ -153,7 +153,7 @@ async function executeJob(job: ScheduledJob) {
     });
     console.log(`[scheduler] Job ${job.id}: recurring, next run at ${nextRun.toISOString()}`);
   } else {
-    await storage.updateScheduledJob(job.id, {
+    await storage.updateJobInternal(job.id, {
       status: "completed",
       lastRunAt: new Date(),
       nextRunAt: null,

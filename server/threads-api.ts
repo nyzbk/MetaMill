@@ -32,8 +32,28 @@ function getRedirectUri(): string {
     host = "http://localhost:5000";
   }
   const uri = `${host}/api/auth/threads/callback`;
-  console.log("[threads-api] Redirect URI:", uri);
   return uri;
+}
+
+async function safeFetchJson(res: Response, context: string): Promise<any> {
+  const text = await res.text();
+  if (!text.trim()) {
+    throw new Error(`${context}: пустой ответ от API (HTTP ${res.status})`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`${context}: неожиданный ответ от API (HTTP ${res.status}): ${text.substring(0, 200)}`);
+  }
+}
+
+export function validateConfig(): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  if (!process.env.META_APP_ID) errors.push("META_APP_ID не настроен");
+  if (!process.env.META_APP_SECRET) errors.push("META_APP_SECRET не настроен");
+  const uri = getRedirectUri();
+  console.log("[threads-api] Redirect URI:", uri);
+  return { valid: errors.length === 0, errors };
 }
 
 export function getThreadsAuthUrl(state: string): string {
@@ -65,9 +85,14 @@ export async function exchangeCodeForToken(code: string): Promise<{
     body: params.toString(),
   });
 
-  const data = await res.json();
+  const data = await safeFetchJson(res, "Обмен кода на токен");
   if (data.error) {
-    throw new Error(data.error_message || data.error?.message || "Token exchange failed");
+    const msg = data.error_message || data.error?.message || data.error;
+    throw new Error(`Ошибка получения токена: ${msg}`);
+  }
+
+  if (!data.access_token || !data.user_id) {
+    throw new Error(`Ответ API не содержит access_token или user_id`);
   }
 
   return {
@@ -88,11 +113,16 @@ export async function exchangeForLongLivedToken(shortToken: string): Promise<{
 
   const longLivedTokenUrl = "https://graph.threads.net/access_token";
   const res = await fetch(`${longLivedTokenUrl}?${params.toString()}`);
-  const data = await res.json();
+  const data = await safeFetchJson(res, "Обмен на долгосрочный токен");
 
   if (data.error) {
-    console.error("Long-lived token exchange error:", JSON.stringify(data));
-    throw new Error(data.error?.message || data.error_message || "Long-lived token exchange failed");
+    const msg = data.error?.message || data.error_message || data.error;
+    console.error("[threads-api] Long-lived token error:", JSON.stringify(data));
+    throw new Error(`Ошибка долгосрочного токена: ${msg}`);
+  }
+
+  if (!data.access_token) {
+    throw new Error("Ответ API не содержит access_token");
   }
 
   return {
@@ -108,10 +138,10 @@ export async function getThreadsProfile(accessToken: string, userId: string): Pr
   const res = await fetch(
     `${THREADS_API_URL}/${userId}?fields=username,threads_profile_picture_url&access_token=${accessToken}`
   );
-  const data = await res.json();
+  const data = await safeFetchJson(res, "Получение профиля");
 
   if (data.error) {
-    throw new Error(data.error?.message || "Failed to fetch profile");
+    throw new Error(`Ошибка профиля: ${data.error?.message || data.error}`);
   }
 
   return {
@@ -146,15 +176,15 @@ export async function publishThreadChain(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(createBody),
       });
-      const createData = await createRes.json();
+      const createData = await safeFetchJson(createRes, `Создание поста ${i + 1}`);
 
       if (createData.error) {
-        errors.push(`Post ${i + 1}: ${createData.error.message}`);
+        errors.push(`Пост ${i + 1}: ${createData.error.message || createData.error}`);
         continue;
       }
 
       if (!createData.id) {
-        errors.push(`Post ${i + 1}: No container ID returned`);
+        errors.push(`Пост ${i + 1}: API не вернул ID контейнера`);
         continue;
       }
 
@@ -166,10 +196,10 @@ export async function publishThreadChain(
           access_token: accessToken,
         }),
       });
-      const publishData = await publishRes.json();
+      const publishData = await safeFetchJson(publishRes, `Публикация поста ${i + 1}`);
 
       if (publishData.error) {
-        errors.push(`Post ${i + 1}: ${publishData.error.message}`);
+        errors.push(`Пост ${i + 1}: ${publishData.error.message || publishData.error}`);
         continue;
       }
 
@@ -181,7 +211,7 @@ export async function publishThreadChain(
         await new Promise((r) => setTimeout(r, 1500));
       }
     } catch (err: any) {
-      errors.push(`Post ${i + 1}: ${err.message}`);
+      errors.push(`Пост ${i + 1}: ${err.message}`);
     }
   }
 
