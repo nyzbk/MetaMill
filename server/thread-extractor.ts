@@ -10,14 +10,17 @@ interface ExtractedThread {
 function isThreadsUrl(url: string): boolean {
   try {
     const u = new URL(url);
-    return u.hostname === "www.threads.net" || u.hostname === "threads.net";
+    return (
+      u.hostname === "www.threads.net" || u.hostname === "threads.net" ||
+      u.hostname === "www.threads.com" || u.hostname === "threads.com"
+    );
   } catch {
     return false;
   }
 }
 
 function extractUsernameFromUrl(url: string): string {
-  const match = url.match(/threads\.net\/@([^/\?]+)/);
+  const match = url.match(/threads\.(?:net|com)\/@([^/\?]+)/);
   return match ? match[1] : "unknown";
 }
 
@@ -170,7 +173,8 @@ async function scrapeThreadsUrl(url: string): Promise<ExtractedThread> {
     const location = res.headers.get("location");
     if (location) {
       const redirectUrl = new URL(location, url);
-      if (redirectUrl.hostname !== "www.threads.net" && redirectUrl.hostname !== "threads.net") {
+      const allowed = ["www.threads.net", "threads.net", "www.threads.com", "threads.com"];
+      if (!allowed.includes(redirectUrl.hostname)) {
         throw new Error("Перенаправление на запрещённый домен");
       }
       const redirectRes = await fetch(redirectUrl.toString(), {
@@ -296,7 +300,7 @@ export async function extractThreadFromUrl(
   }
 ): Promise<ExtractedThread> {
   if (!isThreadsUrl(url)) {
-    throw new Error("URL должен быть ссылкой на Threads.net (например, https://www.threads.net/@user/post/xxxxx)");
+    throw new Error("URL должен быть ссылкой на Threads (например, https://www.threads.com/@user/post/xxxxx)");
   }
 
   if (options.firecrawlApiKey) {

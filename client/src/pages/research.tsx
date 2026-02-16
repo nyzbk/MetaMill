@@ -351,7 +351,7 @@ export default function Research() {
             <CardContent className="p-4 space-y-3">
               <div className="flex gap-3 flex-wrap">
                 <Input
-                  placeholder="https://www.threads.net/@username/post/xxxxx"
+                  placeholder="https://www.threads.com/@username/post/xxxxx"
                   value={extractUrl}
                   onChange={(e) => setExtractUrl(e.target.value)}
                   className="flex-1 min-w-[200px]"
@@ -377,7 +377,7 @@ export default function Research() {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Вставьте ссылку на тред из Threads.net. Контент будет извлечён автоматически без Threads API.
+                Вставьте ссылку на тред из Threads. Контент будет извлечён автоматически без Threads API.
                 Для лучшего результата добавьте Firecrawl API ключ в Настройках.
               </p>
             </CardContent>
@@ -472,7 +472,7 @@ export default function Research() {
                 <Link2 className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" />
                 <h3 className="font-semibold mb-1">Извлечение тредов по URL</h3>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Вставьте ссылку на любой публичный тред из Threads.net.
+                  Вставьте ссылку на любой публичный тред из Threads.
                   <br />
                   Контент будет автоматически извлечён и готов к импорту как шаблон.
                 </p>
@@ -488,7 +488,7 @@ export default function Research() {
           <Card className="overflow-visible">
             <CardContent className="p-4 space-y-3">
               <Textarea
-                placeholder={"Вставьте ссылки на треды (по одной на строку):\nhttps://www.threads.net/@user1/post/xxx\nhttps://www.threads.net/@user2/post/yyy"}
+                placeholder={"Вставьте ссылки на треды (по одной на строку):\nhttps://www.threads.com/@user1/post/xxx\nhttps://www.threads.com/@user2/post/yyy"}
                 value={batchUrls}
                 onChange={(e) => setBatchUrls(e.target.value)}
                 className="min-h-[120px] text-sm font-mono"
