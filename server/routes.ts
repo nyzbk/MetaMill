@@ -341,20 +341,26 @@ Write in Russian language.`;
   app.get("/api/auth/threads/callback", async (req, res) => {
     try {
       const { code, state, error } = req.query;
+      console.log("OAuth callback received:", { code: code ? "present" : "missing", state: state ? "present" : "missing", error });
       if (error) {
-        return res.redirect("/?auth_error=" + encodeURIComponent(String(error)));
+        return res.redirect("/accounts?auth_error=" + encodeURIComponent(String(error)));
       }
       if (!code || !state) {
-        return res.redirect("/?auth_error=missing_params");
+        return res.redirect("/accounts?auth_error=missing_params");
       }
       if (!oauthStates.has(String(state))) {
-        return res.redirect("/?auth_error=invalid_state");
+        console.log("OAuth state not found. Active states:", oauthStates.size);
+        return res.redirect("/accounts?auth_error=invalid_state_try_again");
       }
       oauthStates.delete(String(state));
 
+      console.log("Exchanging code for token...");
       const { accessToken: shortToken, userId } = await exchangeCodeForToken(String(code));
+      console.log("Got short token, exchanging for long-lived...");
       const { accessToken: longToken, expiresIn } = await exchangeForLongLivedToken(shortToken);
+      console.log("Got long-lived token, fetching profile...");
       const profile = await getThreadsProfile(longToken, userId);
+      console.log("Profile fetched:", profile.username);
 
       const allAccounts = await storage.getAccounts();
       const existing = allAccounts.find(
@@ -370,8 +376,9 @@ Write in Russian language.`;
           tokenExpiresAt: new Date(Date.now() + expiresIn * 1000),
           status: "active",
         });
+        console.log("Updated existing account:", existing.id);
       } else {
-        await storage.createAccount({
+        const newAccount = await storage.createAccount({
           username: profile.username,
           platform: "threads",
           accessToken: longToken,
@@ -380,12 +387,13 @@ Write in Russian language.`;
           tokenExpiresAt: new Date(Date.now() + expiresIn * 1000),
           status: "active",
         });
+        console.log("Created new account:", newAccount.id);
       }
 
       res.redirect("/accounts?auth_success=true");
     } catch (error: any) {
       console.error("OAuth callback error:", error);
-      res.redirect("/?auth_error=" + encodeURIComponent(error.message));
+      res.redirect("/accounts?auth_error=" + encodeURIComponent(error.message));
     }
   });
 
