@@ -105,6 +105,7 @@ async function executeJob(job: ScheduledJob) {
 
     for (let i = 0; i < branches.length; i++) {
       await storage.createPost({
+        userId: job.userId,
         accountId: job.accountId,
         templateId: job.templateId,
         content: branches[i],
@@ -124,6 +125,7 @@ async function executeJob(job: ScheduledJob) {
   } else {
     for (let i = 0; i < branches.length; i++) {
       await storage.createPost({
+        userId: job.userId,
         accountId: job.accountId,
         templateId: job.templateId,
         content: branches[i],
@@ -170,7 +172,7 @@ async function generateContent(job: ScheduledJob, branchCount: number): Promise<
   };
 
   if (job.provider && job.modelId) {
-    const allSettings = await storage.getLlmSettings();
+    const allSettings = await storage.getLlmSettings(job.userId || "");
     const match = allSettings.find(s => s.provider === job.provider && s.modelId === job.modelId);
     llmSetting = {
       provider: job.provider,
@@ -178,7 +180,7 @@ async function generateContent(job: ScheduledJob, branchCount: number): Promise<
       apiKey: match?.apiKey || null,
     };
   } else {
-    const defaultSetting = await storage.getDefaultLlmSetting();
+    const defaultSetting = await storage.getDefaultLlmSetting(job.userId || "");
     if (defaultSetting) {
       llmSetting = defaultSetting;
     }

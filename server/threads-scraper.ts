@@ -100,10 +100,12 @@ export function filterViralThreads(threads: ThreadPost[], minLikes: number = 50)
 
 export async function importThreadAsTemplate(
   thread: ThreadPost,
-  accountId?: number
+  accountId?: number,
+  userId?: string
 ): Promise<any> {
   const title = thread.text.substring(0, 60) + (thread.text.length > 60 ? "..." : "");
   const template = await storage.createTemplate({
+    userId: userId || null,
     title: `[Импорт] ${title}`,
     description: `Импортировано от @${thread.username} | ${thread.like_count || 0} лайков | ${new Date(thread.timestamp).toLocaleDateString("ru-RU")}`,
     branches: 1,
@@ -118,13 +120,15 @@ export async function importThreadAsTemplate(
 export async function importMultipleAsTemplate(
   threads: ThreadPost[],
   templateTitle: string,
-  accountId?: number
+  accountId?: number,
+  userId?: string
 ): Promise<any> {
   const texts = threads.map(t => t.text).filter(Boolean);
   if (texts.length === 0) throw new Error("Нет текстового контента для импорта");
 
   const totalLikes = threads.reduce((sum, t) => sum + (t.like_count || 0), 0);
   const template = await storage.createTemplate({
+    userId: userId || null,
     title: templateTitle,
     description: `${texts.length} постов | ${totalLikes} лайков | от @${threads[0]?.username || "unknown"}`,
     branches: texts.length,

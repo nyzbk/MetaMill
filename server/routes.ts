@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertAccountSchema, insertTemplateSchema, insertPostSchema, insertScheduledJobSchema, insertLlmSettingSchema, llmSettings } from "@shared/schema";
@@ -7,8 +7,13 @@ import { getThreadsAuthUrl, exchangeCodeForToken, exchangeForLongLivedToken, get
 import { getSchedulerStatus } from "./scheduler";
 import { searchThreadsByKeyword, getUserThreads, lookupThreadsUser, sortByEngagement, filterViralThreads, importThreadAsTemplate, importMultipleAsTemplate } from "./threads-scraper";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import crypto from "crypto";
+import { isAuthenticated } from "./replit_integrations/auth";
+
+function getUserId(req: Request): string {
+  return (req as any).user?.claims?.sub || "";
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -75,156 +80,179 @@ h1{color:#9b59b6}h2{color:#b07ed8;margin-top:28px}a{color:#9b59b6}</style></head
   });
 
   // ── Accounts ──
-  app.get("/api/accounts", async (_req, res) => {
-    const data = await storage.getAccounts();
+  app.get("/api/accounts", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const data = await storage.getAccounts(userId);
     res.json(data);
   });
 
-  app.post("/api/accounts", async (req, res) => {
-    const parsed = insertAccountSchema.safeParse(req.body);
+  app.post("/api/accounts", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const parsed = insertAccountSchema.safeParse({ ...req.body, userId });
     if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
     const account = await storage.createAccount(parsed.data);
     res.status(201).json(account);
   });
 
-  app.delete("/api/accounts/:id", async (req, res) => {
-    await storage.deleteAccount(parseInt(req.params.id));
+  app.delete("/api/accounts/:id", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    await storage.deleteAccount(parseInt(req.params.id as string), userId);
     res.status(204).send();
   });
 
-  app.put("/api/accounts/:id", async (req, res) => {
-    const id = parseInt(req.params.id);
-    const updated = await storage.updateAccount(id, req.body);
+  app.put("/api/accounts/:id", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const id = parseInt(req.params.id as string);
+    const updated = await storage.updateAccount(id, req.body, userId);
     if (!updated) return res.status(404).json({ message: "Account not found" });
     res.json(updated);
   });
 
   // ── Templates ──
-  app.get("/api/templates", async (_req, res) => {
-    const data = await storage.getTemplates();
+  app.get("/api/templates", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const data = await storage.getTemplates(userId);
     res.json(data);
   });
 
-  app.post("/api/templates", async (req, res) => {
-    const parsed = insertTemplateSchema.safeParse(req.body);
+  app.post("/api/templates", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const parsed = insertTemplateSchema.safeParse({ ...req.body, userId });
     if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
     const template = await storage.createTemplate(parsed.data);
     res.status(201).json(template);
   });
 
-  app.delete("/api/templates/:id", async (req, res) => {
-    await storage.deleteTemplate(parseInt(req.params.id));
+  app.delete("/api/templates/:id", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    await storage.deleteTemplate(parseInt(req.params.id as string), userId);
     res.status(204).send();
   });
 
   // ── Posts ──
-  app.get("/api/posts", async (_req, res) => {
-    const data = await storage.getPosts();
+  app.get("/api/posts", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const data = await storage.getPosts(userId);
     res.json(data);
   });
 
-  app.post("/api/posts", async (req, res) => {
-    const parsed = insertPostSchema.safeParse(req.body);
+  app.post("/api/posts", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const parsed = insertPostSchema.safeParse({ ...req.body, userId });
     if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
     const post = await storage.createPost(parsed.data);
     res.status(201).json(post);
   });
 
   // ── Scheduled Jobs ──
-  app.get("/api/scheduled-jobs", async (_req, res) => {
-    const data = await storage.getScheduledJobs();
+  app.get("/api/scheduled-jobs", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const data = await storage.getScheduledJobs(userId);
     res.json(data);
   });
 
-  app.post("/api/scheduled-jobs", async (req, res) => {
-    const parsed = insertScheduledJobSchema.safeParse(req.body);
+  app.post("/api/scheduled-jobs", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const parsed = insertScheduledJobSchema.safeParse({ ...req.body, userId });
     if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
     const job = await storage.createScheduledJob(parsed.data);
     res.status(201).json(job);
   });
 
-  app.delete("/api/scheduled-jobs/:id", async (req, res) => {
-    await storage.deleteScheduledJob(parseInt(req.params.id));
+  app.delete("/api/scheduled-jobs/:id", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    await storage.deleteScheduledJob(parseInt(req.params.id as string), userId);
     res.status(204).send();
   });
 
-  app.get("/api/scheduler/status", (_req, res) => {
+  app.get("/api/scheduler/status", isAuthenticated, (_req, res) => {
     res.json(getSchedulerStatus());
   });
 
-  app.post("/api/scheduled-jobs/:id/run-now", async (req, res) => {
-    const id = parseInt(req.params.id);
-    const job = await storage.getScheduledJob(id);
+  app.post("/api/scheduled-jobs/:id/run-now", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const id = parseInt(req.params.id as string);
+    const job = await storage.getScheduledJob(id, userId);
     if (!job) return res.status(404).json({ message: "Job not found" });
     await storage.updateScheduledJob(id, {
       status: "pending",
       scheduledAt: new Date(),
       nextRunAt: new Date(),
-    });
+    }, userId);
     res.json({ message: "Задача поставлена в очередь" });
   });
 
-  app.post("/api/scheduled-jobs/:id/pause", async (req, res) => {
-    const id = parseInt(req.params.id);
-    const job = await storage.getScheduledJob(id);
+  app.post("/api/scheduled-jobs/:id/pause", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const id = parseInt(req.params.id as string);
+    const job = await storage.getScheduledJob(id, userId);
     if (!job) return res.status(404).json({ message: "Job not found" });
-    await storage.updateScheduledJob(id, { status: "paused" });
+    await storage.updateScheduledJob(id, { status: "paused" }, userId);
     res.json({ message: "Задача приостановлена" });
   });
 
-  app.post("/api/scheduled-jobs/:id/resume", async (req, res) => {
-    const id = parseInt(req.params.id);
-    const job = await storage.getScheduledJob(id);
+  app.post("/api/scheduled-jobs/:id/resume", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const id = parseInt(req.params.id as string);
+    const job = await storage.getScheduledJob(id, userId);
     if (!job) return res.status(404).json({ message: "Job not found" });
     await storage.updateScheduledJob(id, {
       status: job.isRecurring ? "recurring" : "pending",
       nextRunAt: job.nextRunAt || job.scheduledAt || new Date(),
-    });
+    }, userId);
     res.json({ message: "Задача возобновлена" });
   });
 
   // ── LLM Settings ──
-  app.get("/api/llm-settings", async (_req, res) => {
-    const data = await storage.getLlmSettings();
+  app.get("/api/llm-settings", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const data = await storage.getLlmSettings(userId);
     res.json(data);
   });
 
-  app.get("/api/llm-models", async (_req, res) => {
+  app.get("/api/llm-models", isAuthenticated, async (_req, res) => {
     res.json(AVAILABLE_MODELS);
   });
 
-  app.post("/api/llm-settings", async (req, res) => {
-    const parsed = insertLlmSettingSchema.safeParse(req.body);
+  app.post("/api/llm-settings", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const parsed = insertLlmSettingSchema.safeParse({ ...req.body, userId });
     if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
     const setting = await storage.createLlmSetting(parsed.data);
     res.status(201).json(setting);
   });
 
-  app.put("/api/llm-settings/:id", async (req, res) => {
-    const id = parseInt(req.params.id);
+  app.put("/api/llm-settings/:id", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const id = parseInt(req.params.id as string);
     const partial = insertLlmSettingSchema.partial().safeParse(req.body);
     if (!partial.success) return res.status(400).json({ message: partial.error.message });
-    const updated = await storage.updateLlmSetting(id, partial.data);
+    const updated = await storage.updateLlmSetting(id, partial.data, userId);
     if (!updated) return res.status(404).json({ message: "Setting not found" });
     res.json(updated);
   });
 
-  app.delete("/api/llm-settings/:id", async (req, res) => {
-    await storage.deleteLlmSetting(parseInt(req.params.id));
+  app.delete("/api/llm-settings/:id", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    await storage.deleteLlmSetting(parseInt(req.params.id as string), userId);
     res.status(204).send();
   });
 
-  app.post("/api/llm-settings/:id/set-default", async (req, res) => {
-    const id = parseInt(req.params.id);
-    await db.update(llmSettings).set({ isDefault: false }).where(eq(llmSettings.isDefault, true));
-    const updated = await storage.updateLlmSetting(id, { isDefault: true });
+  app.post("/api/llm-settings/:id/set-default", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const id = parseInt(req.params.id as string);
+    await db.update(llmSettings).set({ isDefault: false }).where(
+      and(eq(llmSettings.isDefault, true), eq(llmSettings.userId, userId))
+    );
+    const updated = await storage.updateLlmSetting(id, { isDefault: true }, userId);
     if (!updated) return res.status(404).json({ message: "Setting not found" });
     res.json(updated);
   });
 
   // ── AI Generation ──
-  app.post("/api/generate", async (req, res) => {
+  app.post("/api/generate", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const { topic, reference, style, branches, directives, provider, modelId, templateId } = req.body;
       if (!topic) return res.status(400).json({ message: "Topic is required" });
 
@@ -234,7 +262,7 @@ h1{color:#9b59b6}h2{color:#b07ed8;margin-top:28px}a{color:#9b59b6}</style></head
       };
 
       if (provider && modelId) {
-        const allSettings = await storage.getLlmSettings();
+        const allSettings = await storage.getLlmSettings(userId);
         const match = allSettings.find(s => s.provider === provider && s.modelId === modelId);
         llmSetting = {
           provider,
@@ -242,7 +270,7 @@ h1{color:#9b59b6}h2{color:#b07ed8;margin-top:28px}a{color:#9b59b6}</style></head
           apiKey: match?.apiKey || null,
         };
       } else {
-        const defaultSetting = await storage.getDefaultLlmSetting();
+        const defaultSetting = await storage.getDefaultLlmSetting(userId);
         if (defaultSetting) {
           llmSetting = defaultSetting;
         }
@@ -252,7 +280,7 @@ h1{color:#9b59b6}h2{color:#b07ed8;margin-top:28px}a{color:#9b59b6}</style></head
       if (templateId) {
         const parsedTemplateId = parseInt(String(templateId), 10);
         if (isNaN(parsedTemplateId)) return res.status(400).json({ message: "Invalid templateId" });
-        const template = await storage.getTemplate(parsedTemplateId);
+        const template = await storage.getTemplate(parsedTemplateId, userId);
         if (template?.content) {
           try {
             const parsed = JSON.parse(template.content);
@@ -346,7 +374,7 @@ Write in Russian language.`;
     res.json({ status: "complete" });
   });
 
-  app.get("/api/auth/threads", (_req, res) => {
+  app.get("/api/auth/threads", isAuthenticated, (req, res) => {
     try {
       const state = createOAuthState();
       const authUrl = getThreadsAuthUrl(state);
@@ -371,35 +399,38 @@ Write in Russian language.`;
         return res.redirect("/accounts?auth_error=invalid_state_try_again");
       }
 
+      const userId = getUserId(req);
+
       console.log("Exchanging code for token...");
-      const { accessToken: shortToken, userId } = await exchangeCodeForToken(String(code));
+      const { accessToken: shortToken, userId: threadsUserId } = await exchangeCodeForToken(String(code));
       console.log("Got short token, exchanging for long-lived...");
       const { accessToken: longToken, expiresIn } = await exchangeForLongLivedToken(shortToken);
       console.log("Got long-lived token, fetching profile...");
-      const profile = await getThreadsProfile(longToken, userId);
+      const profile = await getThreadsProfile(longToken, threadsUserId);
       console.log("Profile fetched:", profile.username);
 
-      const allAccounts = await storage.getAccounts();
+      const allAccounts = await storage.getAccounts(userId);
       const existing = allAccounts.find(
-        (a) => a.threadsUserId === userId
+        (a) => a.threadsUserId === threadsUserId
       );
 
       if (existing) {
         await storage.updateAccount(existing.id, {
           accessToken: longToken,
-          threadsUserId: userId,
+          threadsUserId: threadsUserId,
           username: profile.username,
           avatarUrl: profile.profilePictureUrl || existing.avatarUrl,
           tokenExpiresAt: new Date(Date.now() + expiresIn * 1000),
           status: "active",
-        });
+        }, userId);
         console.log("Updated existing account:", existing.id);
       } else {
         const newAccount = await storage.createAccount({
+          userId,
           username: profile.username,
           platform: "threads",
           accessToken: longToken,
-          threadsUserId: userId,
+          threadsUserId: threadsUserId,
           avatarUrl: profile.profilePictureUrl,
           tokenExpiresAt: new Date(Date.now() + expiresIn * 1000),
           status: "active",
@@ -420,8 +451,9 @@ Write in Russian language.`;
   });
 
   // ── Publish (Threads API + DB save) ──
-  app.post("/api/publish", async (req, res) => {
+  app.post("/api/publish", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const { accountId, branches } = req.body;
       if (!accountId || !branches) return res.status(400).json({ message: "accountId and branches required" });
       if (!Array.isArray(branches) || branches.length === 0 || branches.length > 25) {
@@ -431,7 +463,7 @@ Write in Russian language.`;
         return res.status(400).json({ message: "Each branch must be a non-empty string under 500 characters" });
       }
 
-      const account = await storage.getAccount(accountId);
+      const account = await storage.getAccount(accountId, userId);
       if (!account) return res.status(404).json({ message: "Account not found" });
 
       if (account.tokenExpiresAt && new Date(account.tokenExpiresAt) < new Date()) {
@@ -442,6 +474,7 @@ Write in Russian language.`;
         const createdPosts = [];
         for (let i = 0; i < branches.length; i++) {
           const post = await storage.createPost({
+            userId,
             accountId,
             content: branches[i],
             threadPosition: i,
@@ -464,6 +497,7 @@ Write in Russian language.`;
       const createdPosts = [];
       for (let i = 0; i < branches.length; i++) {
         const post = await storage.createPost({
+          userId,
           accountId,
           content: branches[i],
           threadPosition: i,
@@ -488,19 +522,20 @@ Write in Russian language.`;
   });
 
   // ── Research / Scraper ──
-  async function getThreadsAccessToken(): Promise<string | null> {
-    const accounts = await storage.getAccounts();
-    const connectedAccount = accounts.find(a => a.accessToken && a.threadsUserId);
+  async function getThreadsAccessToken(userId: string): Promise<string | null> {
+    const userAccounts = await storage.getAccounts(userId);
+    const connectedAccount = userAccounts.find(a => a.accessToken && a.threadsUserId);
     if (connectedAccount?.accessToken) return connectedAccount.accessToken;
     return process.env.THREADS_USER_TOKEN || null;
   }
 
-  app.post("/api/research/search", async (req, res) => {
+  app.post("/api/research/search", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const { query, limit } = req.body;
       if (!query) return res.status(400).json({ message: "query is required" });
 
-      const token = await getThreadsAccessToken();
+      const token = await getThreadsAccessToken(userId);
       if (!token) {
         return res.status(400).json({ message: "Нет токена Threads API. Подключите аккаунт через OAuth." });
       }
@@ -514,38 +549,39 @@ Write in Russian language.`;
     }
   });
 
-  app.post("/api/research/user-threads", async (req, res) => {
+  app.post("/api/research/user-threads", isAuthenticated, async (req, res) => {
     try {
-      let { userId, limit } = req.body;
-      if (!userId) return res.status(400).json({ message: "userId is required" });
+      const userId = getUserId(req);
+      let { userId: threadUserId, limit } = req.body;
+      if (!threadUserId) return res.status(400).json({ message: "userId is required" });
 
-      const urlMatch = String(userId).match(/threads\.(?:net|com)\/@?([^\/\?\s]+)/);
+      const urlMatch = String(threadUserId).match(/threads\.(?:net|com)\/@?([^\/\?\s]+)/);
       if (urlMatch) {
-        userId = urlMatch[1];
+        threadUserId = urlMatch[1];
       }
-      userId = String(userId).replace(/^@/, "").trim();
+      threadUserId = String(threadUserId).replace(/^@/, "").trim();
 
-      const token = await getThreadsAccessToken();
+      const token = await getThreadsAccessToken(userId);
       if (!token) {
         return res.status(400).json({ message: "Нет токена Threads API. Подключите аккаунт через OAuth." });
       }
 
       let resolvedId: string;
-      if (userId.toLowerCase() === "me") {
+      if (threadUserId.toLowerCase() === "me") {
         resolvedId = "me";
       } else {
-        const accounts = await storage.getAccounts();
-        const matchedAccount = accounts.find(
-          a => a.accessToken && a.threadsUserId && a.username?.toLowerCase() === userId.toLowerCase()
+        const userAccounts = await storage.getAccounts(userId);
+        const matchedAccount = userAccounts.find(
+          a => a.accessToken && a.threadsUserId && a.username?.toLowerCase() === threadUserId.toLowerCase()
         );
 
         if (matchedAccount) {
           resolvedId = matchedAccount.threadsUserId!;
-        } else if (/^\d+$/.test(userId)) {
-          resolvedId = userId;
+        } else if (/^\d+$/.test(threadUserId)) {
+          resolvedId = threadUserId;
         } else {
           return res.status(400).json({
-            message: `Имя "@${userId}" нельзя использовать напрямую. Threads API позволяет загружать треды только подключённого аккаунта. Используйте "me" или подключите аккаунт через OAuth. Для чужих аккаунтов используйте «Ручной импорт».`
+            message: `Имя "@${threadUserId}" нельзя использовать напрямую. Threads API позволяет загружать треды только подключённого аккаунта. Используйте "me" или подключите аккаунт через OAuth. Для чужих аккаунтов используйте «Ручной импорт».`
           });
         }
       }
@@ -559,17 +595,18 @@ Write in Russian language.`;
     }
   });
 
-  app.post("/api/research/user-lookup", async (req, res) => {
+  app.post("/api/research/user-lookup", isAuthenticated, async (req, res) => {
     try {
-      const { userId } = req.body;
-      if (!userId) return res.status(400).json({ message: "userId is required" });
+      const userId = getUserId(req);
+      const { userId: lookupUserId } = req.body;
+      if (!lookupUserId) return res.status(400).json({ message: "userId is required" });
 
-      const token = await getThreadsAccessToken();
+      const token = await getThreadsAccessToken(userId);
       if (!token) {
         return res.status(400).json({ message: "Нет токена Threads API." });
       }
 
-      const profile = await lookupThreadsUser(token, userId);
+      const profile = await lookupThreadsUser(token, lookupUserId);
       res.json(profile);
     } catch (error: any) {
       console.error("User lookup error:", error);
@@ -577,14 +614,16 @@ Write in Russian language.`;
     }
   });
 
-  app.post("/api/research/import-thread", async (req, res) => {
+  app.post("/api/research/import-thread", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const { text, username, likeCount, timestamp, accountId } = req.body;
       if (!text || typeof text !== "string") return res.status(400).json({ message: "text is required" });
 
       const template = await importThreadAsTemplate(
         { id: "", text, username: username || "unknown", timestamp: timestamp || new Date().toISOString(), like_count: likeCount || 0 },
-        accountId
+        accountId,
+        userId
       );
       res.json(template);
     } catch (error: any) {
@@ -592,23 +631,25 @@ Write in Russian language.`;
     }
   });
 
-  app.post("/api/research/import-bundle", async (req, res) => {
+  app.post("/api/research/import-bundle", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const { threads, title, accountId } = req.body;
       if (!threads || !Array.isArray(threads) || threads.length === 0) {
         return res.status(400).json({ message: "threads array is required" });
       }
       if (!title) return res.status(400).json({ message: "title is required" });
 
-      const template = await importMultipleAsTemplate(threads, title, accountId);
+      const template = await importMultipleAsTemplate(threads, title, accountId, userId);
       res.json(template);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
   });
 
-  app.post("/api/research/import-manual", async (req, res) => {
+  app.post("/api/research/import-manual", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const { branches, title, style, sourceUsername, accountId } = req.body;
       if (!branches || !Array.isArray(branches) || branches.length === 0 || !branches.every((b: any) => typeof b === "string")) {
         return res.status(400).json({ message: "branches must be an array of strings" });
@@ -619,6 +660,7 @@ Write in Russian language.`;
       if (cleanBranches.length === 0) return res.status(400).json({ message: "At least one non-empty branch is required" });
 
       const template = await storage.createTemplate({
+        userId,
         title,
         description: sourceUsername ? `Импорт стиля от @${sourceUsername}` : "Ручной импорт треда",
         branches: cleanBranches.length,

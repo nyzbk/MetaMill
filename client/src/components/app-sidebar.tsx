@@ -11,6 +11,9 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/use-auth";
 import {
   LayoutDashboard,
   Users,
@@ -21,6 +24,7 @@ import {
   Factory,
   Settings,
   Search,
+  LogOut,
 } from "lucide-react";
 
 const navItems = [
@@ -36,6 +40,15 @@ const navItems = [
 
 export function AppSidebar() {
   const [location] = useLocation();
+  const { user } = useAuth();
+
+  const initials = [user?.firstName, user?.lastName]
+    .filter(Boolean)
+    .map(n => n![0])
+    .join("")
+    .toUpperCase() || "U";
+
+  const displayName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || user?.email || "Пользователь";
 
   return (
     <Sidebar>
@@ -72,11 +85,25 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="p-4">
+      <SidebarFooter className="p-3 space-y-2">
         <div className="flex items-center gap-2 px-2">
-          <div className="w-2 h-2 rounded-full bg-emerald-500" />
-          <span className="text-xs text-muted-foreground">Система активна</span>
+          <Avatar className="w-7 h-7">
+            <AvatarImage src={user?.profileImageUrl || undefined} alt={displayName} />
+            <AvatarFallback className="text-xs">{initials}</AvatarFallback>
+          </Avatar>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium truncate" data-testid="text-user-name">{displayName}</p>
+            {user?.email && (
+              <p className="text-[10px] text-muted-foreground truncate" data-testid="text-user-email">{user.email}</p>
+            )}
+          </div>
         </div>
+        <a href="/api/logout" data-testid="button-logout">
+          <Button variant="ghost" size="sm" className="w-full justify-start gap-2 text-muted-foreground">
+            <LogOut className="w-4 h-4" />
+            <span>Выйти</span>
+          </Button>
+        </a>
       </SidebarFooter>
     </Sidebar>
   );
