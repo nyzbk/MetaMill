@@ -279,7 +279,7 @@ export default function Research() {
             <CardContent className="p-4">
               <div className="flex gap-3 flex-wrap">
                 <Input
-                  placeholder="ID пользователя Threads (числовой)"
+                  placeholder="URL, @username или числовой ID (или 'me')"
                   value={userId}
                   onChange={(e) => setUserId(e.target.value)}
                   className="flex-1 min-w-[200px]"
@@ -296,7 +296,7 @@ export default function Research() {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground mt-2">
-                Для @nikidrawsfeels нужен числовой Threads User ID. Используйте ручной импорт если ID неизвестен.
+                Введите «me» для загрузки тредов подключённого аккаунта, числовой ID, или @username подключённого аккаунта. Для чужих аккаунтов используйте «Ручной импорт».
               </p>
             </CardContent>
           </Card>

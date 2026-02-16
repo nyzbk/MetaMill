@@ -516,15 +516,41 @@ Write in Russian language.`;
 
   app.post("/api/research/user-threads", async (req, res) => {
     try {
-      const { userId, limit } = req.body;
+      let { userId, limit } = req.body;
       if (!userId) return res.status(400).json({ message: "userId is required" });
+
+      const urlMatch = String(userId).match(/threads\.(?:net|com)\/@?([^\/\?\s]+)/);
+      if (urlMatch) {
+        userId = urlMatch[1];
+      }
+      userId = String(userId).replace(/^@/, "").trim();
 
       const token = await getThreadsAccessToken();
       if (!token) {
         return res.status(400).json({ message: "Нет токена Threads API. Подключите аккаунт через OAuth." });
       }
 
-      const threads = await getUserThreads(token, userId, limit || 50);
+      let resolvedId: string;
+      if (userId.toLowerCase() === "me") {
+        resolvedId = "me";
+      } else {
+        const accounts = await storage.getAccounts();
+        const matchedAccount = accounts.find(
+          a => a.accessToken && a.threadsUserId && a.username?.toLowerCase() === userId.toLowerCase()
+        );
+
+        if (matchedAccount) {
+          resolvedId = matchedAccount.threadsUserId!;
+        } else if (/^\d+$/.test(userId)) {
+          resolvedId = userId;
+        } else {
+          return res.status(400).json({
+            message: `Имя "@${userId}" нельзя использовать напрямую. Threads API позволяет загружать треды только подключённого аккаунта. Используйте "me" или подключите аккаунт через OAuth. Для чужих аккаунтов используйте «Ручной импорт».`
+          });
+        }
+      }
+
+      const threads = await getUserThreads(token, resolvedId, limit || 50);
       const sorted = sortByEngagement(threads);
       res.json({ threads: sorted, total: sorted.length });
     } catch (error: any) {

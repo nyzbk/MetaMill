@@ -29,9 +29,16 @@ export async function searchThreadsByKeyword(
 ): Promise<ThreadPost[]> {
   const url = `${THREADS_API_URL}/keyword_search?q=${encodeURIComponent(query)}&fields=id,text,username,like_count,reply_count,timestamp,media_type&limit=${limit}&access_token=${accessToken}`;
   const res = await fetch(url);
-  const data: ThreadsSearchResult = await res.json();
-  if ((data as any).error) {
-    throw new Error((data as any).error.message || "Search failed");
+  const text = await res.text();
+  if (!text) throw new Error("Threads API вернул пустой ответ");
+  let data: any;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(`Threads API вернул невалидный ответ (HTTP ${res.status})`);
+  }
+  if (data.error) {
+    throw new Error(data.error.message || "Search failed");
   }
   return data.data || [];
 }
@@ -41,11 +48,21 @@ export async function getUserThreads(
   userId: string,
   limit: number = 50
 ): Promise<ThreadPost[]> {
-  const url = `${THREADS_API_URL}/${userId}/threads?fields=id,text,username,like_count,reply_count,timestamp,media_type&limit=${limit}&access_token=${accessToken}`;
+  const resolvedId = userId === "me" ? "me" : userId;
+  const url = `${THREADS_API_URL}/${resolvedId}/threads?fields=id,text,username,like_count,reply_count,timestamp,media_type&limit=${limit}&access_token=${accessToken}`;
   const res = await fetch(url);
-  const data: ThreadsSearchResult = await res.json();
-  if ((data as any).error) {
-    throw new Error((data as any).error.message || "Failed to fetch user threads");
+  const text = await res.text();
+  if (!text) {
+    throw new Error("Threads API вернул пустой ответ. Проверьте токен доступа.");
+  }
+  let data: any;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(`Threads API вернул невалидный ответ (HTTP ${res.status})`);
+  }
+  if (data.error) {
+    throw new Error(data.error.message || "Failed to fetch user threads");
   }
   return data.data || [];
 }
