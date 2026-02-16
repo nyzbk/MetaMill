@@ -11,6 +11,7 @@ import Templates from "@/pages/templates";
 import Generator from "@/pages/generator";
 import Scheduler from "@/pages/scheduler";
 import ThreadTest from "@/pages/thread-test";
+import SettingsPage from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -22,6 +23,7 @@ function Router() {
       <Route path="/generator" component={Generator} />
       <Route path="/scheduler" component={Scheduler} />
       <Route path="/test" component={ThreadTest} />
+      <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />
     </Switch>
   );

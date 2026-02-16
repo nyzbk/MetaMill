@@ -1,12 +1,13 @@
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
 import {
-  users, accounts, templates, posts, scheduledJobs,
+  users, accounts, templates, posts, scheduledJobs, llmSettings,
   type User, type InsertUser,
   type Account, type InsertAccount,
   type Template, type InsertTemplate,
   type Post, type InsertPost,
   type ScheduledJob, type InsertScheduledJob,
+  type LlmSetting, type InsertLlmSetting,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -34,6 +35,15 @@ export interface IStorage {
   createScheduledJob(job: InsertScheduledJob): Promise<ScheduledJob>;
   updateScheduledJob(id: number, data: Partial<InsertScheduledJob>): Promise<ScheduledJob | undefined>;
   deleteScheduledJob(id: number): Promise<void>;
+
+  getLlmSettings(): Promise<LlmSetting[]>;
+  getLlmSetting(id: number): Promise<LlmSetting | undefined>;
+  getDefaultLlmSetting(): Promise<LlmSetting | undefined>;
+  createLlmSetting(setting: InsertLlmSetting): Promise<LlmSetting>;
+  updateLlmSetting(id: number, data: Partial<InsertLlmSetting>): Promise<LlmSetting | undefined>;
+  deleteLlmSetting(id: number): Promise<void>;
+
+  updateAccount(id: number, data: Partial<InsertAccount>): Promise<Account | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -113,6 +123,34 @@ export class DatabaseStorage implements IStorage {
   }
   async deleteScheduledJob(id: number) {
     await db.delete(scheduledJobs).where(eq(scheduledJobs.id, id));
+  }
+
+  async getLlmSettings() {
+    return db.select().from(llmSettings).orderBy(desc(llmSettings.createdAt));
+  }
+  async getLlmSetting(id: number) {
+    const [s] = await db.select().from(llmSettings).where(eq(llmSettings.id, id));
+    return s;
+  }
+  async getDefaultLlmSetting() {
+    const [s] = await db.select().from(llmSettings).where(eq(llmSettings.isDefault, true));
+    return s;
+  }
+  async createLlmSetting(data: InsertLlmSetting) {
+    const [s] = await db.insert(llmSettings).values(data).returning();
+    return s;
+  }
+  async updateLlmSetting(id: number, data: Partial<InsertLlmSetting>) {
+    const [s] = await db.update(llmSettings).set(data).where(eq(llmSettings.id, id)).returning();
+    return s;
+  }
+  async deleteLlmSetting(id: number) {
+    await db.delete(llmSettings).where(eq(llmSettings.id, id));
+  }
+
+  async updateAccount(id: number, data: Partial<InsertAccount>) {
+    const [a] = await db.update(accounts).set(data).where(eq(accounts.id, id)).returning();
+    return a;
   }
 }
 

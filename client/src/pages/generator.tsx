@@ -11,7 +11,7 @@ import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Sparkles, Send, Copy, Check, Loader2, Zap, FileText } from "lucide-react";
-import type { Account } from "@shared/schema";
+import type { Account, LlmSetting } from "@shared/schema";
 
 interface GeneratedThread {
   branches: string[];
@@ -25,6 +25,7 @@ export default function Generator() {
   const [branches, setBranches] = useState(5);
   const [directives, setDirectives] = useState("");
   const [accountId, setAccountId] = useState<string>("");
+  const [selectedModel, setSelectedModel] = useState("");
   const [generated, setGenerated] = useState<GeneratedThread | null>(null);
   const [copied, setCopied] = useState<number | null>(null);
 
@@ -32,15 +33,27 @@ export default function Generator() {
     queryKey: ["/api/accounts"],
   });
 
+  const { data: llmSettings } = useQuery<LlmSetting[]>({
+    queryKey: ["/api/llm-settings"],
+  });
+
   const generateMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/generate", {
+      const body: any = {
         topic,
         reference,
         style,
         branches,
         directives,
-      });
+      };
+      if (selectedModel && selectedModel !== "default") {
+        const setting = llmSettings?.find((s) => `${s.provider}:${s.modelId}` === selectedModel);
+        if (setting) {
+          body.provider = setting.provider;
+          body.modelId = setting.modelId;
+        }
+      }
+      const res = await apiRequest("POST", "/api/generate", body);
       return await res.json();
     },
     onSuccess: (data) => {
@@ -174,6 +187,24 @@ export default function Generator() {
                   onChange={(e) => setDirectives(e.target.value)}
                   data-testid="input-directives"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label>LLM Модель</Label>
+                <Select value={selectedModel} onValueChange={setSelectedModel}>
+                  <SelectTrigger data-testid="select-llm-model">
+                    <SelectValue placeholder="По умолчанию" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">Llama 3.3 70B (по умолчанию)</SelectItem>
+                    {llmSettings?.filter(s => s.isActive).map((s) => (
+                      <SelectItem key={s.id} value={`${s.provider}:${s.modelId}`}>
+                        {s.displayName}
+                        {s.isDefault ? " ★" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <Button

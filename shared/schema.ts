@@ -100,4 +100,23 @@ export const insertScheduledJobSchema = createInsertSchema(scheduledJobs).omit({
 export type InsertScheduledJob = z.infer<typeof insertScheduledJobSchema>;
 export type ScheduledJob = typeof scheduledJobs.$inferSelect;
 
+export const llmSettings = pgTable("llm_settings", {
+  id: serial("id").primaryKey(),
+  provider: text("provider").notNull(),
+  modelId: text("model_id").notNull(),
+  displayName: text("display_name").notNull(),
+  apiKey: text("api_key"),
+  isDefault: boolean("is_default").default(false),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertLlmSettingSchema = createInsertSchema(llmSettings).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertLlmSetting = z.infer<typeof insertLlmSettingSchema>;
+export type LlmSetting = typeof llmSettings.$inferSelect;
+
 export { conversations, messages } from "./models/chat";

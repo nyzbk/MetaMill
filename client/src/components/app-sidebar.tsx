@@ -19,6 +19,7 @@ import {
   CalendarClock,
   FlaskConical,
   Factory,
+  Settings,
 } from "lucide-react";
 
 const navItems = [
@@ -28,6 +29,7 @@ const navItems = [
   { title: "AI Генератор", url: "/generator", icon: Sparkles },
   { title: "Авто-постинг", url: "/scheduler", icon: CalendarClock },
   { title: "Тест треда", url: "/test", icon: FlaskConical },
+  { title: "Настройки", url: "/settings", icon: Settings },
 ];
 
 export function AppSidebar() {

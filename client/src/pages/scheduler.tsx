@@ -225,7 +225,7 @@ export default function Scheduler() {
                             </>
                           )}
                           {job.isRecurring && (
-                            <Badge variant="secondary" className="text-[10px]">Recurring</Badge>
+                            <Badge variant="secondary" className="text-[10px]">Повтор</Badge>
                           )}
                         </div>
                       </div>

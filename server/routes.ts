@@ -1,13 +1,10 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertAccountSchema, insertTemplateSchema, insertPostSchema, insertScheduledJobSchema } from "@shared/schema";
-import OpenAI from "openai";
-
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+import { insertAccountSchema, insertTemplateSchema, insertPostSchema, insertScheduledJobSchema, insertLlmSettingSchema, llmSettings } from "@shared/schema";
+import { generateWithLlm, AVAILABLE_MODELS } from "./llm";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -30,6 +27,13 @@ export async function registerRoutes(
   app.delete("/api/accounts/:id", async (req, res) => {
     await storage.deleteAccount(parseInt(req.params.id));
     res.status(204).send();
+  });
+
+  app.put("/api/accounts/:id", async (req, res) => {
+    const id = parseInt(req.params.id);
+    const updated = await storage.updateAccount(id, req.body);
+    if (!updated) return res.status(404).json({ message: "Account not found" });
+    res.json(updated);
   });
 
   // ── Templates ──
@@ -81,11 +85,70 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  // ── LLM Settings ──
+  app.get("/api/llm-settings", async (_req, res) => {
+    const data = await storage.getLlmSettings();
+    res.json(data);
+  });
+
+  app.get("/api/llm-models", async (_req, res) => {
+    res.json(AVAILABLE_MODELS);
+  });
+
+  app.post("/api/llm-settings", async (req, res) => {
+    const parsed = insertLlmSettingSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const setting = await storage.createLlmSetting(parsed.data);
+    res.status(201).json(setting);
+  });
+
+  app.put("/api/llm-settings/:id", async (req, res) => {
+    const id = parseInt(req.params.id);
+    const partial = insertLlmSettingSchema.partial().safeParse(req.body);
+    if (!partial.success) return res.status(400).json({ message: partial.error.message });
+    const updated = await storage.updateLlmSetting(id, partial.data);
+    if (!updated) return res.status(404).json({ message: "Setting not found" });
+    res.json(updated);
+  });
+
+  app.delete("/api/llm-settings/:id", async (req, res) => {
+    await storage.deleteLlmSetting(parseInt(req.params.id));
+    res.status(204).send();
+  });
+
+  app.post("/api/llm-settings/:id/set-default", async (req, res) => {
+    const id = parseInt(req.params.id);
+    await db.update(llmSettings).set({ isDefault: false }).where(eq(llmSettings.isDefault, true));
+    const updated = await storage.updateLlmSetting(id, { isDefault: true });
+    if (!updated) return res.status(404).json({ message: "Setting not found" });
+    res.json(updated);
+  });
+
   // ── AI Generation ──
   app.post("/api/generate", async (req, res) => {
     try {
-      const { topic, reference, style, branches, directives } = req.body;
+      const { topic, reference, style, branches, directives, provider, modelId } = req.body;
       if (!topic) return res.status(400).json({ message: "Topic is required" });
+
+      let llmSetting: { provider: string; modelId: string; apiKey?: string | null } = {
+        provider: "openrouter",
+        modelId: "meta-llama/llama-3.3-70b-instruct",
+      };
+
+      if (provider && modelId) {
+        const allSettings = await storage.getLlmSettings();
+        const match = allSettings.find(s => s.provider === provider && s.modelId === modelId);
+        llmSetting = {
+          provider,
+          modelId,
+          apiKey: match?.apiKey || null,
+        };
+      } else {
+        const defaultSetting = await storage.getDefaultLlmSetting();
+        if (defaultSetting) {
+          llmSetting = defaultSetting;
+        }
+      }
 
       const systemPrompt = `You are MetaMill, an AI content generator for Threads (social media platform by Meta).
 Generate a thread chain with exactly ${branches || 5} posts.
@@ -102,17 +165,13 @@ Each subsequent post should build on the previous one.
 The last post should be a strong call to action or conclusion.
 Write in Russian language.`;
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-5-mini",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `Generate a thread about: ${topic}` },
-        ],
-        response_format: { type: "json_object" },
-        max_completion_tokens: 4096,
+      const content = await generateWithLlm(llmSetting, {
+        systemPrompt,
+        userPrompt: `Generate a thread about: ${topic}`,
+        jsonMode: true,
+        maxTokens: 4096,
       });
 
-      const content = response.choices[0]?.message?.content || "{}";
       let parsed;
       try {
         parsed = JSON.parse(content);
