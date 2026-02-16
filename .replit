@@ -41,3 +41,8 @@ waitForPort = 5000
 
 [agent]
 integrations = ["javascript_openai_ai_integrations:2.0.0", "javascript_openrouter_ai_integrations:2.0.0"]
+
+[userenv]
+
+[userenv.production]
+THREADS_REDIRECT_URI = "https://meta-mill.replit.app/api/auth/threads/callback"
