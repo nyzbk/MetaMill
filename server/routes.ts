@@ -249,6 +249,24 @@ Write in Russian language.`;
   // ── Threads OAuth ──
   const oauthStates = new Map<string, { timestamp: number }>();
 
+  app.post("/api/auth/threads/deauthorize", (req, res) => {
+    console.log("[threads] Deauthorize callback received:", req.body);
+    res.json({ success: true });
+  });
+
+  app.post("/api/auth/threads/delete", (req, res) => {
+    console.log("[threads] Data deletion request received:", req.body);
+    const confirmationCode = crypto.randomBytes(8).toString("hex");
+    res.json({
+      url: `https://${process.env.REPLIT_DEV_DOMAIN || "localhost:5000"}/api/auth/threads/delete-status?code=${confirmationCode}`,
+      confirmation_code: confirmationCode,
+    });
+  });
+
+  app.get("/api/auth/threads/delete-status", (req, res) => {
+    res.json({ status: "complete" });
+  });
+
   app.get("/api/auth/threads", (_req, res) => {
     try {
       const state = crypto.randomBytes(16).toString("hex");
