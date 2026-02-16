@@ -838,6 +838,65 @@ Write in Russian language.`;
     }
   });
 
+  // ── Thread Extraction (URL scraping, no Threads API) ──
+  app.post("/api/research/extract-url", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const { url } = req.body;
+      if (!url || typeof url !== "string") return res.status(400).json({ message: "URL обязателен" });
+
+      let firecrawlApiKey: string | null = null;
+      const allSettings = await storage.getLlmSettings(userId);
+      const fcSetting = allSettings.find(s => s.provider === "firecrawl");
+      if (fcSetting?.apiKey) firecrawlApiKey = fcSetting.apiKey;
+
+      const { extractThreadFromUrl } = await import("./thread-extractor");
+      const extracted = await extractThreadFromUrl(url.trim(), { firecrawlApiKey, userId });
+      res.json(extracted);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/research/extract-and-import", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const { url, title, accountId } = req.body;
+      if (!url || typeof url !== "string") return res.status(400).json({ message: "URL обязателен" });
+
+      let firecrawlApiKey: string | null = null;
+      const allSettings = await storage.getLlmSettings(userId);
+      const fcSetting = allSettings.find(s => s.provider === "firecrawl");
+      if (fcSetting?.apiKey) firecrawlApiKey = fcSetting.apiKey;
+
+      const { extractAndImport } = await import("./thread-extractor");
+      const result = await extractAndImport(url.trim(), { firecrawlApiKey, userId, title, accountId });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/research/extract-batch", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const { urls } = req.body;
+      if (!urls || !Array.isArray(urls) || urls.length === 0) return res.status(400).json({ message: "urls обязателен" });
+      if (urls.length > 10) return res.status(400).json({ message: "Максимум 10 URL за раз" });
+
+      let firecrawlApiKey: string | null = null;
+      const allSettings = await storage.getLlmSettings(userId);
+      const fcSetting = allSettings.find(s => s.provider === "firecrawl");
+      if (fcSetting?.apiKey) firecrawlApiKey = fcSetting.apiKey;
+
+      const { extractMultipleUrls } = await import("./thread-extractor");
+      const result = await extractMultipleUrls(urls, { firecrawlApiKey, userId });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // ── Content Repurpose ──
   app.post("/api/repurpose", isAuthenticated, async (req, res) => {
     try {

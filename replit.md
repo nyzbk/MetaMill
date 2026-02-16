@@ -30,6 +30,7 @@ MetaMill is an industrial AI-powered content automation platform for Threads.net
 - `client/src/App.tsx` - Main app with sidebar layout, all routes
 - `client/src/components/app-sidebar.tsx` - Navigation sidebar with 3 groups (Основное, Инструменты, Система)
 - `server/threads-scraper.ts` - Research system: keyword search, user thread fetching, engagement sorting, viral filtering, import-to-template
+- `server/thread-extractor.ts` - URL-based thread extraction: scrapes Threads.net posts via HTML/meta tags + optional Firecrawl API, supports single/batch/import workflows
 - `client/src/pages/` - Dashboard, Accounts, Templates, Generator, Scheduler, Settings, ThreadTest, Research, Trends, Monitoring, MetaWizard, Repurpose
 
 ## Key Features
@@ -83,6 +84,9 @@ MetaMill is an industrial AI-powered content automation platform for Threads.net
 - GET/POST/DELETE `/api/keyword-monitors` - Keyword monitor CRUD
 - GET `/api/keyword-monitors/:id/results` - Get monitor results
 - POST `/api/keyword-monitors/:id/check` - Trigger manual keyword check via Threads API
+- POST `/api/research/extract-url` - Extract thread content from Threads.net URL (web scraping, no API)
+- POST `/api/research/extract-and-import` - Extract + import as template in one step
+- POST `/api/research/extract-batch` - Batch extract up to 10 URLs
 - POST `/api/repurpose` - Convert URL content to thread chain via AI
 
 ## Security Notes

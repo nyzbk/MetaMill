@@ -6,11 +6,11 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Search, Download, Heart, MessageCircle, Clock, Plus, Sparkles, FileText } from "lucide-react";
+import { Search, Download, Heart, MessageCircle, Clock, Plus, Sparkles, FileText, Link2, Loader2, ExternalLink, Check } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface ThreadPost {
@@ -22,6 +22,12 @@ interface ThreadPost {
   reply_count?: number;
   views?: number;
   media_type?: string;
+}
+
+interface ExtractedThread {
+  username: string;
+  posts: string[];
+  source: string;
 }
 
 export default function Research() {
@@ -36,6 +42,13 @@ export default function Research() {
   const [manualTitle, setManualTitle] = useState("");
   const [manualSource, setManualSource] = useState("");
   const [manualBranches, setManualBranches] = useState<string[]>([""]);
+
+  const [extractUrl, setExtractUrl] = useState("");
+  const [extractedThread, setExtractedThread] = useState<ExtractedThread | null>(null);
+  const [extractTitle, setExtractTitle] = useState("");
+  const [batchUrls, setBatchUrls] = useState("");
+  const [batchResults, setBatchResults] = useState<ExtractedThread[]>([]);
+  const [batchErrors, setBatchErrors] = useState<{ url: string; error: string }[]>([]);
 
   const searchMutation = useMutation({
     mutationFn: async () => {
@@ -132,6 +145,81 @@ export default function Research() {
     },
   });
 
+  const extractMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/research/extract-url", { url: extractUrl });
+      return res.json();
+    },
+    onSuccess: (data: ExtractedThread) => {
+      setExtractedThread(data);
+      setExtractTitle(`[Извлечено] @${data.username}`);
+      toast({ title: "Тред извлечён", description: `${data.posts.length} пост(ов) от @${data.username}` });
+    },
+    onError: (e: Error) => {
+      toast({ title: "Ошибка извлечения", description: e.message, variant: "destructive" });
+    },
+  });
+
+  const importExtractedMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/research/extract-and-import", {
+        url: extractedThread?.source || extractUrl,
+        title: extractTitle,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/templates"] });
+      setExtractedThread(null);
+      setExtractUrl("");
+      setExtractTitle("");
+      toast({ title: "Импортировано как шаблон" });
+    },
+    onError: (e: Error) => {
+      toast({ title: "Ошибка импорта", description: e.message, variant: "destructive" });
+    },
+  });
+
+  const batchExtractMutation = useMutation({
+    mutationFn: async () => {
+      const urls = batchUrls.split("\n").map(u => u.trim()).filter(u => u.length > 0);
+      const res = await apiRequest("POST", "/api/research/extract-batch", { urls });
+      return res.json();
+    },
+    onSuccess: (data: { results: ExtractedThread[]; errors: { url: string; error: string }[] }) => {
+      setBatchResults(data.results || []);
+      setBatchErrors(data.errors || []);
+      if (data.results?.length > 0) {
+        toast({ title: `Извлечено ${data.results.length} тред(ов)` });
+      }
+      if (data.errors?.length > 0) {
+        toast({ title: `${data.errors.length} ошибок`, variant: "destructive" });
+      }
+    },
+    onError: (e: Error) => {
+      toast({ title: "Ошибка", description: e.message, variant: "destructive" });
+    },
+  });
+
+  const importBatchItemMutation = useMutation({
+    mutationFn: async (item: ExtractedThread) => {
+      const res = await apiRequest("POST", "/api/research/import-manual", {
+        branches: item.posts,
+        title: `[Извлечено] @${item.username}`,
+        sourceUsername: item.username,
+        style: "reference",
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/templates"] });
+      toast({ title: "Импортировано как шаблон" });
+    },
+    onError: (e: Error) => {
+      toast({ title: "Ошибка импорта", description: e.message, variant: "destructive" });
+    },
+  });
+
   function toggleThread(id: string) {
     const next = new Set(selectedThreads);
     if (next.has(id)) next.delete(id);
@@ -159,7 +247,7 @@ export default function Research() {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Исследование</h1>
-          <p className="text-sm text-muted-foreground mt-1">Поиск залетевших тредов и импорт как шаблонов</p>
+          <p className="text-sm text-muted-foreground mt-1">Поиск залетевших тредов, извлечение по URL и импорт как шаблонов</p>
         </div>
         <Dialog open={manualOpen} onOpenChange={setManualOpen}>
           <DialogTrigger asChild>
@@ -171,6 +259,7 @@ export default function Research() {
           <DialogContent className="max-h-[90vh] overflow-y-auto max-w-2xl">
             <DialogHeader>
               <DialogTitle>Ручной импорт треда</DialogTitle>
+              <DialogDescription>Вставьте текст треда вручную для создания шаблона</DialogDescription>
             </DialogHeader>
             <div className="space-y-4 pt-2">
               <div className="space-y-2">
@@ -237,17 +326,255 @@ export default function Research() {
         </Dialog>
       </div>
 
-      <Tabs defaultValue="search" className="space-y-4">
+      <Tabs defaultValue="extract" className="space-y-4">
         <TabsList>
+          <TabsTrigger value="extract" data-testid="tab-extract">
+            <Link2 className="w-4 h-4 mr-1.5" />
+            По URL
+          </TabsTrigger>
+          <TabsTrigger value="batch" data-testid="tab-batch">
+            <ExternalLink className="w-4 h-4 mr-1.5" />
+            Пакетное извлечение
+          </TabsTrigger>
           <TabsTrigger value="search" data-testid="tab-search">
             <Search className="w-4 h-4 mr-1.5" />
-            Поиск по ключевым словам
+            Поиск (API)
           </TabsTrigger>
           <TabsTrigger value="user" data-testid="tab-user">
             <Sparkles className="w-4 h-4 mr-1.5" />
-            Треды пользователя
+            Треды пользователя (API)
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="extract" className="space-y-4">
+          <Card className="overflow-visible">
+            <CardContent className="p-4 space-y-3">
+              <div className="flex gap-3 flex-wrap">
+                <Input
+                  placeholder="https://www.threads.net/@username/post/xxxxx"
+                  value={extractUrl}
+                  onChange={(e) => setExtractUrl(e.target.value)}
+                  className="flex-1 min-w-[200px]"
+                  onKeyDown={(e) => e.key === "Enter" && extractUrl && extractMutation.mutate()}
+                  data-testid="input-extract-url"
+                />
+                <Button
+                  onClick={() => extractMutation.mutate()}
+                  disabled={!extractUrl || extractMutation.isPending}
+                  data-testid="button-extract"
+                >
+                  {extractMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Извлечение...
+                    </>
+                  ) : (
+                    <>
+                      <Link2 className="w-4 h-4 mr-2" />
+                      Извлечь тред
+                    </>
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Вставьте ссылку на тред из Threads.net. Контент будет извлечён автоматически без Threads API.
+                Для лучшего результата добавьте Firecrawl API ключ в Настройках.
+              </p>
+            </CardContent>
+          </Card>
+
+          {extractMutation.isPending && (
+            <div className="space-y-3">
+              <Skeleton className="h-32" />
+              <Skeleton className="h-20" />
+            </div>
+          )}
+
+          {extractedThread && (
+            <Card className="overflow-visible border-[hsl(263,70%,50%)]/30">
+              <CardContent className="p-4 space-y-4">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant="secondary">@{extractedThread.username}</Badge>
+                    <Badge variant="outline">{extractedThread.posts.length} пост(ов)</Badge>
+                  </div>
+                  <a
+                    href={extractedThread.source}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-muted-foreground flex items-center gap-1"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Оригинал
+                  </a>
+                </div>
+
+                <div className="space-y-2">
+                  {extractedThread.posts.map((post, i) => (
+                    <div key={i} className="flex gap-2">
+                      <div className="flex items-center justify-center w-6 h-6 rounded-md bg-[hsl(263,70%,50%)]/10 text-xs font-mono text-[hsl(263,70%,60%)] flex-shrink-0 mt-0.5">
+                        {i + 1}
+                      </div>
+                      <p className="text-sm whitespace-pre-wrap break-words flex-1" data-testid={`text-extracted-post-${i}`}>
+                        {post}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="border-t pt-3 space-y-3">
+                  <div className="space-y-2">
+                    <Label>Название шаблона</Label>
+                    <Input
+                      value={extractTitle}
+                      onChange={(e) => setExtractTitle(e.target.value)}
+                      placeholder="Название для шаблона..."
+                      data-testid="input-extract-title"
+                    />
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    <Button
+                      onClick={() => importExtractedMutation.mutate()}
+                      disabled={!extractTitle || importExtractedMutation.isPending}
+                      data-testid="button-import-extracted"
+                    >
+                      {importExtractedMutation.isPending ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Импорт...
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-4 h-4 mr-2" />
+                          Импортировать как шаблон
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setExtractedThread(null);
+                        setExtractTitle("");
+                      }}
+                      data-testid="button-clear-extracted"
+                    >
+                      Очистить
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {!extractedThread && !extractMutation.isPending && (
+            <Card className="overflow-visible">
+              <CardContent className="p-12 text-center">
+                <Link2 className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" />
+                <h3 className="font-semibold mb-1">Извлечение тредов по URL</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Вставьте ссылку на любой публичный тред из Threads.net.
+                  <br />
+                  Контент будет автоматически извлечён и готов к импорту как шаблон.
+                </p>
+                <p className="text-xs text-muted-foreground/60">
+                  Без Threads API. Работает через веб-скрейпинг. Firecrawl для лучших результатов (опционально).
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="batch" className="space-y-4">
+          <Card className="overflow-visible">
+            <CardContent className="p-4 space-y-3">
+              <Textarea
+                placeholder={"Вставьте ссылки на треды (по одной на строку):\nhttps://www.threads.net/@user1/post/xxx\nhttps://www.threads.net/@user2/post/yyy"}
+                value={batchUrls}
+                onChange={(e) => setBatchUrls(e.target.value)}
+                className="min-h-[120px] text-sm font-mono"
+                data-testid="textarea-batch-urls"
+              />
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <p className="text-xs text-muted-foreground">
+                  Максимум 10 URL за раз. Извлечение занимает ~2-3 секунды на URL.
+                </p>
+                <Button
+                  onClick={() => batchExtractMutation.mutate()}
+                  disabled={!batchUrls.trim() || batchExtractMutation.isPending}
+                  data-testid="button-batch-extract"
+                >
+                  {batchExtractMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Извлечение...
+                    </>
+                  ) : (
+                    <>
+                      <ExternalLink className="w-4 h-4 mr-2" />
+                      Извлечь все
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {batchExtractMutation.isPending && (
+            <div className="space-y-3">
+              {[1, 2, 3].map(i => <Skeleton key={i} className="h-24" />)}
+            </div>
+          )}
+
+          {batchErrors.length > 0 && (
+            <Card className="overflow-visible border-destructive/30">
+              <CardContent className="p-4">
+                <p className="text-sm font-medium text-destructive mb-2">Ошибки извлечения:</p>
+                {batchErrors.map((err, i) => (
+                  <div key={i} className="text-xs text-muted-foreground mb-1">
+                    <span className="font-mono">{err.url.substring(0, 60)}...</span>
+                    <br />
+                    <span className="text-destructive/80">{err.error}</span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {batchResults.length > 0 && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Извлечено: {batchResults.length} тред(ов)
+              </p>
+              {batchResults.map((item, idx) => (
+                <Card key={idx} className="overflow-visible">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                          <Badge variant="secondary">@{item.username}</Badge>
+                          <Badge variant="outline">{item.posts.length} пост(ов)</Badge>
+                        </div>
+                        <p className="text-sm whitespace-pre-wrap break-words line-clamp-3" data-testid={`text-batch-item-${idx}`}>
+                          {item.posts[0]}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => importBatchItemMutation.mutate(item)}
+                        disabled={importBatchItemMutation.isPending}
+                        data-testid={`button-import-batch-${idx}`}
+                      >
+                        <Download className="w-3 h-3 mr-1" />
+                        Импорт
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
 
         <TabsContent value="search" className="space-y-4">
           <Card className="overflow-visible">
@@ -270,6 +597,9 @@ export default function Research() {
                   {searchMutation.isPending ? "Поиск..." : "Найти"}
                 </Button>
               </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Требует подключённый аккаунт Threads с OAuth токеном.
+              </p>
             </CardContent>
           </Card>
         </TabsContent>
@@ -296,7 +626,7 @@ export default function Research() {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground mt-2">
-                Введите «me» для загрузки тредов подключённого аккаунта, числовой ID, или @username подключённого аккаунта. Для чужих аккаунтов используйте «Ручной импорт».
+                Требует подключённый аккаунт. «me» для своих тредов, числовой ID для чужих (через Threads API).
               </p>
             </CardContent>
           </Card>
@@ -324,6 +654,7 @@ export default function Research() {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Импорт пакета как шаблон</DialogTitle>
+                <DialogDescription>Объедините выбранные треды в один шаблон</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 pt-2">
                 <div className="space-y-2">
@@ -421,23 +752,6 @@ export default function Research() {
             </Card>
           ))}
         </div>
-      )}
-
-      {searchResults.length === 0 && !searchMutation.isPending && !userThreadsMutation.isPending && (
-        <Card className="overflow-visible">
-          <CardContent className="p-12 text-center">
-            <Search className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" />
-            <h3 className="font-semibold mb-1">Поиск залетевших тредов</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              Ищите по ключевым словам или загружайте треды пользователя.
-              <br />
-              Используйте «Ручной импорт» чтобы вставить тред вручную.
-            </p>
-            <p className="text-xs text-muted-foreground/60">
-              Совет: скопируйте тред @nikidrawsfeels и используйте ручной импорт для создания шаблона стиля
-            </p>
-          </CardContent>
-        </Card>
       )}
     </div>
   );

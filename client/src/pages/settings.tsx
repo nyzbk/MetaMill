@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Star, Trash2, Settings as SettingsIcon, Pencil, MoreHorizontal } from "lucide-react";
+import { Plus, Star, Trash2, Settings as SettingsIcon, Pencil, MoreHorizontal, Link2, Check, Loader2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { LlmSetting } from "@shared/schema";
 
@@ -59,6 +59,8 @@ export default function Settings() {
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [isActive, setIsActive] = useState(true);
+  const [firecrawlKey, setFirecrawlKey] = useState("");
+  const [firecrawlSaved, setFirecrawlSaved] = useState(false);
 
   const { data: settings, isLoading } = useQuery<LlmSetting[]>({
     queryKey: ["/api/llm-settings"],
@@ -128,6 +130,53 @@ export default function Settings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/llm-settings"] });
       toast({ title: "Провайдер по умолчанию обновлён" });
+    },
+  });
+
+  const firecrawlSetting = settings?.find(s => s.provider === "firecrawl");
+  const hasFirecrawl = !!firecrawlSetting;
+
+  const saveFirecrawlMutation = useMutation({
+    mutationFn: async () => {
+      if (firecrawlSetting) {
+        await apiRequest("PUT", `/api/llm-settings/${firecrawlSetting.id}`, {
+          provider: "firecrawl",
+          modelId: "firecrawl",
+          displayName: "Firecrawl API",
+          apiKey: firecrawlKey,
+          isActive: true,
+        });
+      } else {
+        await apiRequest("POST", "/api/llm-settings", {
+          provider: "firecrawl",
+          modelId: "firecrawl",
+          displayName: "Firecrawl API",
+          apiKey: firecrawlKey,
+          isActive: true,
+        });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/llm-settings"] });
+      setFirecrawlSaved(true);
+      setFirecrawlKey("");
+      toast({ title: "Firecrawl API ключ сохранён" });
+      setTimeout(() => setFirecrawlSaved(false), 2000);
+    },
+    onError: (e: Error) => {
+      toast({ title: "Ошибка", description: e.message, variant: "destructive" });
+    },
+  });
+
+  const deleteFirecrawlMutation = useMutation({
+    mutationFn: async () => {
+      if (firecrawlSetting) {
+        await apiRequest("DELETE", `/api/llm-settings/${firecrawlSetting.id}`);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/llm-settings"] });
+      toast({ title: "Firecrawl API ключ удалён" });
     },
   });
 
@@ -300,9 +349,9 @@ export default function Settings() {
           </Dialog>
         </div>
 
-        {settings && settings.length > 0 ? (
+        {settings && settings.filter(s => s.provider !== "firecrawl").length > 0 ? (
           <div className="space-y-3">
-            {settings.map((setting) => (
+            {settings.filter(s => s.provider !== "firecrawl").map((setting) => (
               <Card key={setting.id} className="overflow-visible" data-testid={`card-llm-setting-${setting.id}`}>
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -384,6 +433,72 @@ export default function Settings() {
             </CardContent>
           </Card>
         )}
+      </div>
+
+      <div className="space-y-4">
+        <h2 className="text-lg font-semibold" data-testid="text-section-firecrawl">Firecrawl API (опционально)</h2>
+        <Card className="overflow-visible">
+          <CardContent className="p-5 space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
+                <Link2 className="w-5 h-5 text-muted-foreground" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium">Firecrawl — улучшенное извлечение тредов</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Firecrawl рендерит JavaScript и извлекает полное содержимое тредов из Threads.net.
+                  Без ключа используется бесплатный HTML-парсинг (ограниченные результаты).
+                </p>
+              </div>
+              {hasFirecrawl && (
+                <Badge variant="secondary" className="bg-emerald-500/15 text-emerald-400 flex-shrink-0">
+                  <Check className="w-3 h-3 mr-1" />
+                  Настроен
+                </Badge>
+              )}
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <Input
+                type="password"
+                placeholder={hasFirecrawl ? "Ключ уже сохранён (введите новый для обновления)" : "fc-xxxxxxxx..."}
+                value={firecrawlKey}
+                onChange={(e) => setFirecrawlKey(e.target.value)}
+                className="flex-1 min-w-[200px]"
+                data-testid="input-firecrawl-key"
+              />
+              <Button
+                onClick={() => saveFirecrawlMutation.mutate()}
+                disabled={!firecrawlKey || saveFirecrawlMutation.isPending}
+                data-testid="button-save-firecrawl"
+              >
+                {saveFirecrawlMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : firecrawlSaved ? (
+                  <Check className="w-4 h-4 mr-2" />
+                ) : null}
+                {firecrawlSaved ? "Сохранено" : "Сохранить"}
+              </Button>
+              {hasFirecrawl && (
+                <Button
+                  variant="outline"
+                  onClick={() => deleteFirecrawlMutation.mutate()}
+                  disabled={deleteFirecrawlMutation.isPending}
+                  data-testid="button-delete-firecrawl"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Удалить
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Получите ключ на{" "}
+              <a href="https://www.firecrawl.dev" target="_blank" rel="noopener noreferrer" className="text-[hsl(263,70%,60%)] underline">
+                firecrawl.dev
+              </a>
+              . Бесплатный тариф: 500 страниц/мес.
+            </p>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

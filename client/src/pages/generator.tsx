@@ -205,7 +205,7 @@ export default function Generator() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="default">Llama 3.3 70B (по умолчанию)</SelectItem>
-                    {llmSettings?.filter(s => s.isActive).map((s) => (
+                    {llmSettings?.filter(s => s.isActive && s.provider !== "firecrawl").map((s) => (
                       <SelectItem key={s.id} value={`${s.provider}:${s.modelId}`}>
                         {s.displayName}
                         {s.isDefault ? " ★" : ""}
