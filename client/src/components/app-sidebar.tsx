@@ -20,6 +20,7 @@ import {
   FlaskConical,
   Factory,
   Settings,
+  Search,
 } from "lucide-react";
 
 const navItems = [
@@ -28,6 +29,7 @@ const navItems = [
   { title: "Шаблоны", url: "/templates", icon: FileText },
   { title: "AI Генератор", url: "/generator", icon: Sparkles },
   { title: "Авто-постинг", url: "/scheduler", icon: CalendarClock },
+  { title: "Исследование", url: "/research", icon: Search },
   { title: "Тест треда", url: "/test", icon: FlaskConical },
   { title: "Настройки", url: "/settings", icon: Settings },
 ];

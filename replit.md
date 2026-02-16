@@ -22,7 +22,8 @@ MetaMill is an industrial AI-powered content automation platform for Threads.net
 - `server/db.ts` - Database connection pool
 - `client/src/App.tsx` - Main app with sidebar layout, all routes
 - `client/src/components/app-sidebar.tsx` - Navigation sidebar
-- `client/src/pages/` - Dashboard, Accounts, Templates, Generator, Scheduler, Settings, ThreadTest
+- `server/threads-scraper.ts` - Research system: keyword search, user thread fetching, engagement sorting, viral filtering, import-to-template
+- `client/src/pages/` - Dashboard, Accounts, Templates, Generator, Scheduler, Settings, ThreadTest, Research
 
 ## Key Features
 1. Multi-account management (Threads & Instagram) with OAuth connection
@@ -32,6 +33,8 @@ MetaMill is an industrial AI-powered content automation platform for Threads.net
 5. Background auto-posting scheduler with recurring jobs (pause/resume/run-now)
 6. Publishing to Threads via Meta API (/me/threads endpoints)
 7. LLM settings page for provider/model management with API keys
+8. Research/scraping system: keyword search, user thread fetching, manual import, bundle import, engagement metrics
+9. Style-matching generation via templateId reference (imported viral threads as style guides)
 
 ## API Endpoints
 - GET/POST/PUT/DELETE `/api/accounts`
@@ -50,6 +53,12 @@ MetaMill is an industrial AI-powered content automation platform for Threads.net
 - GET/POST/PUT/DELETE `/api/llm-settings` - LLM provider management
 - POST `/api/llm-settings/:id/set-default` - Set default LLM model
 - GET `/api/llm-models` - List available LLM models
+- POST `/api/research/search` - Keyword search via Threads API
+- POST `/api/research/user-threads` - Fetch user's threads by ID
+- POST `/api/research/user-lookup` - Lookup Threads user profile
+- POST `/api/research/import-thread` - Import single thread as template
+- POST `/api/research/import-bundle` - Import multiple threads as one template
+- POST `/api/research/import-manual` - Manual thread import (paste content)
 
 ## Security Notes
 - OAuth account linking uses threadsUserId (not username) to prevent account takeover

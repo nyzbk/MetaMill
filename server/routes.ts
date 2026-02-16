@@ -5,6 +5,7 @@ import { insertAccountSchema, insertTemplateSchema, insertPostSchema, insertSche
 import { generateWithLlm, AVAILABLE_MODELS } from "./llm";
 import { getThreadsAuthUrl, exchangeCodeForToken, exchangeForLongLivedToken, getThreadsProfile, publishThreadChain } from "./threads-api";
 import { getSchedulerStatus } from "./scheduler";
+import { searchThreadsByKeyword, getUserThreads, lookupThreadsUser, sortByEngagement, filterViralThreads, importThreadAsTemplate, importMultipleAsTemplate } from "./threads-scraper";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
@@ -165,7 +166,7 @@ export async function registerRoutes(
   // ── AI Generation ──
   app.post("/api/generate", async (req, res) => {
     try {
-      const { topic, reference, style, branches, directives, provider, modelId } = req.body;
+      const { topic, reference, style, branches, directives, provider, modelId, templateId } = req.body;
       if (!topic) return res.status(400).json({ message: "Topic is required" });
 
       let llmSetting: { provider: string; modelId: string; apiKey?: string | null } = {
@@ -188,12 +189,29 @@ export async function registerRoutes(
         }
       }
 
+      let referenceContent = "";
+      if (templateId) {
+        const parsedTemplateId = parseInt(String(templateId), 10);
+        if (isNaN(parsedTemplateId)) return res.status(400).json({ message: "Invalid templateId" });
+        const template = await storage.getTemplate(parsedTemplateId);
+        if (template?.content) {
+          try {
+            const parsed = JSON.parse(template.content);
+            const posts = Array.isArray(parsed) ? parsed : [parsed];
+            referenceContent = `\n\nHere is a reference thread to match the style of:\n${posts.map((p: string, i: number) => `[Post ${i + 1}] ${p}`).join("\n")}\n\nIMPORTANT: Match the tone, structure, and style of the reference thread above, but create NEW original content about the given topic.`;
+          } catch {
+            referenceContent = `\n\nReference style: ${template.content}`;
+          }
+        }
+      }
+
       const systemPrompt = `You are MetaMill, an AI content generator for Threads (social media platform by Meta).
 Generate a thread chain with exactly ${branches || 5} posts.
 Each post should be under 500 characters.
 ${style ? `Tone/style: ${style}` : ""}
 ${reference ? `Match the style of this reference: "${reference}"` : ""}
 ${directives ? `Additional directives: ${directives}` : ""}
+${referenceContent}
 
 Return ONLY a valid JSON object in this exact format:
 {"branches": ["post 1 text", "post 2 text", ...]}
@@ -364,6 +382,126 @@ Write in Russian language.`;
     } catch (error: any) {
       console.error("Publish error:", error);
       res.status(500).json({ message: error.message || "Publishing failed" });
+    }
+  });
+
+  // ── Research / Scraper ──
+  async function getThreadsAccessToken(): Promise<string | null> {
+    const accounts = await storage.getAccounts();
+    const connectedAccount = accounts.find(a => a.accessToken && a.threadsUserId);
+    if (connectedAccount?.accessToken) return connectedAccount.accessToken;
+    return process.env.THREADS_USER_TOKEN || null;
+  }
+
+  app.post("/api/research/search", async (req, res) => {
+    try {
+      const { query, limit } = req.body;
+      if (!query) return res.status(400).json({ message: "query is required" });
+
+      const token = await getThreadsAccessToken();
+      if (!token) {
+        return res.status(400).json({ message: "Нет токена Threads API. Подключите аккаунт через OAuth." });
+      }
+
+      const threads = await searchThreadsByKeyword(token, query, limit || 25);
+      const sorted = sortByEngagement(threads);
+      res.json({ threads: sorted, total: sorted.length });
+    } catch (error: any) {
+      console.error("Search error:", error);
+      res.status(500).json({ message: error.message || "Search failed" });
+    }
+  });
+
+  app.post("/api/research/user-threads", async (req, res) => {
+    try {
+      const { userId, limit } = req.body;
+      if (!userId) return res.status(400).json({ message: "userId is required" });
+
+      const token = await getThreadsAccessToken();
+      if (!token) {
+        return res.status(400).json({ message: "Нет токена Threads API. Подключите аккаунт через OAuth." });
+      }
+
+      const threads = await getUserThreads(token, userId, limit || 50);
+      const sorted = sortByEngagement(threads);
+      res.json({ threads: sorted, total: sorted.length });
+    } catch (error: any) {
+      console.error("User threads error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch threads" });
+    }
+  });
+
+  app.post("/api/research/user-lookup", async (req, res) => {
+    try {
+      const { userId } = req.body;
+      if (!userId) return res.status(400).json({ message: "userId is required" });
+
+      const token = await getThreadsAccessToken();
+      if (!token) {
+        return res.status(400).json({ message: "Нет токена Threads API." });
+      }
+
+      const profile = await lookupThreadsUser(token, userId);
+      res.json(profile);
+    } catch (error: any) {
+      console.error("User lookup error:", error);
+      res.status(500).json({ message: error.message || "User lookup failed" });
+    }
+  });
+
+  app.post("/api/research/import-thread", async (req, res) => {
+    try {
+      const { text, username, likeCount, timestamp, accountId } = req.body;
+      if (!text || typeof text !== "string") return res.status(400).json({ message: "text is required" });
+
+      const template = await importThreadAsTemplate(
+        { id: "", text, username: username || "unknown", timestamp: timestamp || new Date().toISOString(), like_count: likeCount || 0 },
+        accountId
+      );
+      res.json(template);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/research/import-bundle", async (req, res) => {
+    try {
+      const { threads, title, accountId } = req.body;
+      if (!threads || !Array.isArray(threads) || threads.length === 0) {
+        return res.status(400).json({ message: "threads array is required" });
+      }
+      if (!title) return res.status(400).json({ message: "title is required" });
+
+      const template = await importMultipleAsTemplate(threads, title, accountId);
+      res.json(template);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/research/import-manual", async (req, res) => {
+    try {
+      const { branches, title, style, sourceUsername, accountId } = req.body;
+      if (!branches || !Array.isArray(branches) || branches.length === 0 || !branches.every((b: any) => typeof b === "string")) {
+        return res.status(400).json({ message: "branches must be an array of strings" });
+      }
+      if (!title || typeof title !== "string") return res.status(400).json({ message: "title is required" });
+
+      const cleanBranches = branches.filter((b: string) => b.trim().length > 0);
+      if (cleanBranches.length === 0) return res.status(400).json({ message: "At least one non-empty branch is required" });
+
+      const template = await storage.createTemplate({
+        title,
+        description: sourceUsername ? `Импорт стиля от @${sourceUsername}` : "Ручной импорт треда",
+        branches: cleanBranches.length,
+        content: JSON.stringify(cleanBranches),
+        style: style || "reference",
+        accountId: accountId || null,
+        status: "active",
+      });
+      res.json(template);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
     }
   });
 
