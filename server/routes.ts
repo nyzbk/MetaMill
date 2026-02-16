@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { insertAccountSchema, insertTemplateSchema, insertPostSchema, insertScheduledJobSchema, insertLlmSettingSchema, llmSettings } from "@shared/schema";
 import { generateWithLlm, AVAILABLE_MODELS } from "./llm";
 import { getThreadsAuthUrl, exchangeCodeForToken, exchangeForLongLivedToken, getThreadsProfile, publishThreadChain } from "./threads-api";
+import { getSchedulerStatus } from "./scheduler";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
@@ -85,6 +86,41 @@ export async function registerRoutes(
   app.delete("/api/scheduled-jobs/:id", async (req, res) => {
     await storage.deleteScheduledJob(parseInt(req.params.id));
     res.status(204).send();
+  });
+
+  app.get("/api/scheduler/status", (_req, res) => {
+    res.json(getSchedulerStatus());
+  });
+
+  app.post("/api/scheduled-jobs/:id/run-now", async (req, res) => {
+    const id = parseInt(req.params.id);
+    const job = await storage.getScheduledJob(id);
+    if (!job) return res.status(404).json({ message: "Job not found" });
+    await storage.updateScheduledJob(id, {
+      status: "pending",
+      scheduledAt: new Date(),
+      nextRunAt: new Date(),
+    });
+    res.json({ message: "Задача поставлена в очередь" });
+  });
+
+  app.post("/api/scheduled-jobs/:id/pause", async (req, res) => {
+    const id = parseInt(req.params.id);
+    const job = await storage.getScheduledJob(id);
+    if (!job) return res.status(404).json({ message: "Job not found" });
+    await storage.updateScheduledJob(id, { status: "paused" });
+    res.json({ message: "Задача приостановлена" });
+  });
+
+  app.post("/api/scheduled-jobs/:id/resume", async (req, res) => {
+    const id = parseInt(req.params.id);
+    const job = await storage.getScheduledJob(id);
+    if (!job) return res.status(404).json({ message: "Job not found" });
+    await storage.updateScheduledJob(id, {
+      status: job.isRecurring ? "recurring" : "pending",
+      nextRunAt: job.nextRunAt || job.scheduledAt || new Date(),
+    });
+    res.json({ message: "Задача возобновлена" });
   });
 
   // ── LLM Settings ──

@@ -91,6 +91,13 @@ export const scheduledJobs = pgTable("scheduled_jobs", {
   isRecurring: boolean("is_recurring").default(false),
   topic: text("topic"),
   style: text("style"),
+  branches: integer("branches").default(5),
+  provider: text("provider"),
+  modelId: text("model_id"),
+  lastRunAt: timestamp("last_run_at"),
+  nextRunAt: timestamp("next_run_at"),
+  lastError: text("last_error"),
+  runCount: integer("run_count").default(0),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 

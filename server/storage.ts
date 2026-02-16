@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, lte, or, isNull } from "drizzle-orm";
 import {
   users, accounts, templates, posts, scheduledJobs, llmSettings,
   type User, type InsertUser,
@@ -44,6 +44,8 @@ export interface IStorage {
   deleteLlmSetting(id: number): Promise<void>;
 
   updateAccount(id: number, data: Partial<InsertAccount>): Promise<Account | undefined>;
+  getDueJobs(): Promise<ScheduledJob[]>;
+  claimJob(id: number): Promise<ScheduledJob | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -151,6 +153,37 @@ export class DatabaseStorage implements IStorage {
   async updateAccount(id: number, data: Partial<InsertAccount>) {
     const [a] = await db.update(accounts).set(data).where(eq(accounts.id, id)).returning();
     return a;
+  }
+
+  async getDueJobs() {
+    const now = new Date();
+    return db.select().from(scheduledJobs).where(
+      and(
+        or(eq(scheduledJobs.status, "pending"), eq(scheduledJobs.status, "recurring")),
+        or(
+          and(
+            lte(scheduledJobs.scheduledAt, now),
+            isNull(scheduledJobs.nextRunAt)
+          ),
+          and(
+            lte(scheduledJobs.nextRunAt, now),
+          )
+        )
+      )
+    );
+  }
+
+  async claimJob(id: number) {
+    const [claimed] = await db.update(scheduledJobs)
+      .set({ status: "running" })
+      .where(
+        and(
+          eq(scheduledJobs.id, id),
+          or(eq(scheduledJobs.status, "pending"), eq(scheduledJobs.status, "recurring"))
+        )
+      )
+      .returning();
+    return claimed;
   }
 }
 
