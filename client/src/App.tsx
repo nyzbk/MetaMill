@@ -15,6 +15,10 @@ import Scheduler from "@/pages/scheduler";
 import ThreadTest from "@/pages/thread-test";
 import SettingsPage from "@/pages/settings";
 import Research from "@/pages/research";
+import Trends from "@/pages/trends";
+import Monitoring from "@/pages/monitoring";
+import MetaWizard from "@/pages/meta-wizard";
+import Repurpose from "@/pages/repurpose";
 import Landing from "@/pages/landing";
 import NotFound from "@/pages/not-found";
 
@@ -27,6 +31,10 @@ function Router() {
       <Route path="/generator" component={Generator} />
       <Route path="/scheduler" component={Scheduler} />
       <Route path="/research" component={Research} />
+      <Route path="/trends" component={Trends} />
+      <Route path="/monitoring" component={Monitoring} />
+      <Route path="/meta-wizard" component={MetaWizard} />
+      <Route path="/repurpose" component={Repurpose} />
       <Route path="/test" component={ThreadTest} />
       <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />

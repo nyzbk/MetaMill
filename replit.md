@@ -13,34 +13,40 @@ MetaMill is an industrial AI-powered content automation platform for Threads.net
 - **Design**: Dark futuristic theme (black #000000 background, purple accent hsl(263,70%,50%), Inter + JetBrains Mono fonts)
 
 ## Project Structure
-- `shared/schema.ts` - All Drizzle table definitions (re-exports auth users/sessions, accounts, templates, posts, scheduled_jobs, llm_settings, conversations, messages). All data tables have `userId` column for per-user isolation
+- `shared/schema.ts` - All Drizzle table definitions (re-exports auth users/sessions, accounts, templates, posts, scheduled_jobs, llm_settings, conversations, messages, trend_items, keyword_monitors, monitor_results). All data tables have `userId` column for per-user isolation
 - `shared/models/auth.ts` - Auth schema (users, sessions tables) — mandatory for Replit Auth
 - `server/replit_integrations/auth/` - Auth module (setupAuth, isAuthenticated middleware, authStorage, registerAuthRoutes)
-- `server/routes.ts` - All API routes (CRUD + AI generation + OAuth + publishing + scheduler control). All routes protected with isAuthenticated middleware
+- `server/routes.ts` - All API routes (CRUD + AI generation + OAuth + publishing + scheduler control + trends + monitoring + repurpose). All routes protected with isAuthenticated middleware
 - `server/storage.ts` - Database storage layer (IStorage interface + DatabaseStorage). All queries scoped by userId
 - `client/src/hooks/use-auth.ts` - React hook for authentication state (useAuth)
 - `client/src/pages/landing.tsx` - Landing page for unauthenticated users
-- `server/llm.ts` - Multi-LLM provider system (OpenRouter, OpenAI, Anthropic, Google, xAI) with 11 pre-configured models
+- `server/llm.ts` - Multi-LLM provider system (OpenRouter, OpenAI, Anthropic, Google, xAI, Ollama) with 11+ models, supports custom baseUrl for self-hosted endpoints
 - `server/threads-api.ts` - Threads OAuth flow + thread chain publishing via Meta API
 - `server/scheduler.ts` - Background scheduler: polls for due jobs, generates content via AI, publishes to Threads, handles recurring jobs
+- `server/trends.ts` - Trend aggregator: fetches from HackerNews, Reddit, TechCrunch RSS
+- `server/repurpose.ts` - Content repurposing engine: extracts content from URLs, converts to thread chains via AI (SSRF protected)
 - `server/seed.ts` - Seed data (3 accounts, 3 templates, 6 posts, 3 scheduled jobs)
 - `server/db.ts` - Database connection pool
 - `client/src/App.tsx` - Main app with sidebar layout, all routes
-- `client/src/components/app-sidebar.tsx` - Navigation sidebar
+- `client/src/components/app-sidebar.tsx` - Navigation sidebar with 3 groups (Основное, Инструменты, Система)
 - `server/threads-scraper.ts` - Research system: keyword search, user thread fetching, engagement sorting, viral filtering, import-to-template
-- `client/src/pages/` - Dashboard, Accounts, Templates, Generator, Scheduler, Settings, ThreadTest, Research
+- `client/src/pages/` - Dashboard, Accounts, Templates, Generator, Scheduler, Settings, ThreadTest, Research, Trends, Monitoring, MetaWizard, Repurpose
 
 ## Key Features
 0. Multi-user authentication via Replit Auth (OpenID Connect) with per-user data isolation
 1. Multi-account management (Threads & Instagram) with OAuth connection
 2. N-branch thread chain templates with style matching
-3. AI content generation with 11 LLM models across 6 providers
+3. AI content generation with 11+ LLM models across 7 providers (incl. Ollama/custom endpoints)
 4. Thread preview/test tool
 5. Background auto-posting scheduler with recurring jobs (pause/resume/run-now)
 6. Publishing to Threads via Meta API (/me/threads endpoints)
-7. LLM settings page for provider/model management with API keys
+7. LLM settings page for provider/model management with API keys + baseUrl for custom endpoints
 8. Research/scraping system: keyword search, user thread fetching, manual import, bundle import, engagement metrics
 9. Style-matching generation via templateId reference (imported viral threads as style guides)
+10. Meta API connection wizard — step-by-step visual guide for configuring Threads API
+11. Trend aggregator — real-time trends from HackerNews, Reddit, TechCrunch with "Use in Generator" action
+12. Keyword monitoring — track keywords in Threads, manual check triggers, result history
+13. Content repurposing — convert URLs (Reddit, blogs, news) into thread chains via AI
 
 ## Auth Routes (Replit Auth)
 - GET `/api/login` - Begin OIDC login flow
@@ -71,6 +77,13 @@ MetaMill is an industrial AI-powered content automation platform for Threads.net
 - POST `/api/research/import-thread` - Import single thread as template
 - POST `/api/research/import-bundle` - Import multiple threads as one template
 - POST `/api/research/import-manual` - Manual thread import (paste content)
+- GET `/api/meta/config` - Check Meta API configuration status
+- GET `/api/trends` - List cached trend items
+- POST `/api/trends/refresh` - Refresh trends from external sources
+- GET/POST/DELETE `/api/keyword-monitors` - Keyword monitor CRUD
+- GET `/api/keyword-monitors/:id/results` - Get monitor results
+- POST `/api/keyword-monitors/:id/check` - Trigger manual keyword check via Threads API
+- POST `/api/repurpose` - Convert URL content to thread chain via AI
 
 ## Security Notes
 - Multi-user data isolation: all CRUD operations scoped by userId (from req.user.claims.sub)
@@ -80,6 +93,7 @@ MetaMill is an industrial AI-powered content automation platform for Threads.net
 - Publish endpoint validates: branches array (1-25 strings, each ≤500 chars), token expiry
 - Scheduler uses atomic job claiming to prevent double execution
 - OAuth state validation with 10-minute expiry using HMAC signing (survives server restarts)
+- Repurpose endpoint blocks internal IP ranges to prevent SSRF attacks
 
 ## User Preferences
 - Interface language: Russian (UI labels), content generation in Russian

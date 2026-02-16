@@ -27,6 +27,8 @@ const PROVIDER_LABELS: Record<string, string> = {
   anthropic: "Anthropic (Claude)",
   google: "Google (Gemini)",
   xai: "xAI (Grok)",
+  ollama: "Ollama (self-hosted)",
+  custom: "Custom API (OpenAI-совместимый)",
 };
 
 const PROVIDER_OPTIONS = [
@@ -35,10 +37,16 @@ const PROVIDER_OPTIONS = [
   { value: "anthropic", label: "Anthropic (Claude)" },
   { value: "google", label: "Google (Gemini)" },
   { value: "xai", label: "xAI (Grok)" },
+  { value: "ollama", label: "Ollama (self-hosted LLM)" },
+  { value: "custom", label: "Custom API (OpenAI-совместимый)" },
 ];
 
 function needsApiKey(provider: string): boolean {
-  return provider === "anthropic" || provider === "google" || provider === "xai";
+  return provider === "anthropic" || provider === "google" || provider === "xai" || provider === "custom";
+}
+
+function needsBaseUrl(provider: string): boolean {
+  return provider === "ollama" || provider === "custom";
 }
 
 export default function Settings() {
@@ -49,6 +57,7 @@ export default function Settings() {
   const [modelId, setModelId] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
   const [isActive, setIsActive] = useState(true);
 
   const { data: settings, isLoading } = useQuery<LlmSetting[]>({
@@ -66,6 +75,7 @@ export default function Settings() {
     setModelId("");
     setDisplayName("");
     setApiKey("");
+    setBaseUrl("");
     setIsActive(true);
     setEditId(null);
   };
@@ -80,6 +90,9 @@ export default function Settings() {
       };
       if (needsApiKey(provider) && apiKey) {
         body.apiKey = apiKey;
+      }
+      if (needsBaseUrl(provider) && baseUrl) {
+        body.baseUrl = baseUrl;
       }
       if (editId) {
         await apiRequest("PUT", `/api/llm-settings/${editId}`, body);
@@ -124,6 +137,7 @@ export default function Settings() {
     setModelId(setting.modelId);
     setDisplayName(setting.displayName);
     setApiKey(setting.apiKey || "");
+    setBaseUrl((setting as any).baseUrl || "");
     setIsActive(setting.isActive);
     setOpen(true);
   };
@@ -180,20 +194,48 @@ export default function Settings() {
 
                 <div className="space-y-2">
                   <Label>Модель</Label>
-                  <Select value={modelId} onValueChange={(v) => {
-                    setModelId(v);
-                    const model = filteredModels.find(m => m.modelId === v);
-                    if (model && !displayName) setDisplayName(model.displayName);
-                  }}>
-                    <SelectTrigger data-testid="select-model">
-                      <SelectValue placeholder="Выберите модель..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {filteredModels.map((m) => (
-                        <SelectItem key={m.modelId} value={m.modelId}>{m.displayName}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {(provider === "ollama" || provider === "custom") ? (
+                    <>
+                      <Input
+                        placeholder={provider === "ollama" ? "llama3.3, qwen2.5, mistral..." : "model-name"}
+                        value={modelId}
+                        onChange={(e) => {
+                          setModelId(e.target.value);
+                          if (!displayName) setDisplayName(e.target.value);
+                        }}
+                        data-testid="input-model-id"
+                      />
+                      {provider === "ollama" && filteredModels.length > 0 && (
+                        <div className="flex gap-1 flex-wrap mt-1">
+                          {filteredModels.map((m) => (
+                            <Badge
+                              key={m.modelId}
+                              variant="secondary"
+                              className="cursor-pointer text-[10px]"
+                              onClick={() => { setModelId(m.modelId); setDisplayName(m.displayName); }}
+                            >
+                              {m.displayName}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <Select value={modelId} onValueChange={(v) => {
+                      setModelId(v);
+                      const model = filteredModels.find(m => m.modelId === v);
+                      if (model && !displayName) setDisplayName(model.displayName);
+                    }}>
+                      <SelectTrigger data-testid="select-model">
+                        <SelectValue placeholder="Выберите модель..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {filteredModels.map((m) => (
+                          <SelectItem key={m.modelId} value={m.modelId}>{m.displayName}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -205,6 +247,24 @@ export default function Settings() {
                     data-testid="input-display-name"
                   />
                 </div>
+
+                {needsBaseUrl(provider) && (
+                  <div className="space-y-2">
+                    <Label>Base URL сервера</Label>
+                    <Input
+                      placeholder={provider === "ollama" ? "http://your-server:11434/v1" : "https://your-api.com/v1"}
+                      value={baseUrl}
+                      onChange={(e) => setBaseUrl(e.target.value)}
+                      data-testid="input-base-url"
+                    />
+                    {provider === "ollama" && (
+                      <p className="text-xs text-muted-foreground">URL вашего Ollama сервера (AWS, Oracle, Azure, Modal и т.д.)</p>
+                    )}
+                    {provider === "custom" && (
+                      <p className="text-xs text-muted-foreground">Любой OpenAI-совместимый API эндпоинт</p>
+                    )}
+                  </div>
+                )}
 
                 {needsApiKey(provider) && (
                   <div className="space-y-2">

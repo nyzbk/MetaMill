@@ -30,9 +30,21 @@ export const AVAILABLE_MODELS = [
   { provider: "anthropic", modelId: "claude-sonnet-4-20250514", displayName: "Claude Sonnet 4" },
   { provider: "google", modelId: "gemini-2.5-pro", displayName: "Gemini 2.5 Pro" },
   { provider: "xai", modelId: "grok-3", displayName: "Grok 3" },
+  { provider: "ollama", modelId: "llama3.3", displayName: "Ollama Llama 3.3" },
+  { provider: "ollama", modelId: "qwen2.5", displayName: "Ollama Qwen 2.5" },
+  { provider: "ollama", modelId: "mistral", displayName: "Ollama Mistral" },
+  { provider: "ollama", modelId: "deepseek-r1", displayName: "Ollama DeepSeek R1" },
+  { provider: "ollama", modelId: "gemma2", displayName: "Ollama Gemma 2" },
+  { provider: "ollama", modelId: "phi3", displayName: "Ollama Phi 3" },
 ];
 
-function getClientForProvider(provider: string, apiKey?: string | null): OpenAI {
+type LlmSettingLike = LlmSetting | { provider: string; modelId: string; apiKey?: string | null; baseUrl?: string | null };
+
+function getClientForProvider(setting: LlmSettingLike): OpenAI {
+  const provider = setting.provider;
+  const apiKey = setting.apiKey;
+  const baseUrl = (setting as any).baseUrl;
+
   switch (provider) {
     case "openrouter":
       return openrouterClient;
@@ -59,16 +71,30 @@ function getClientForProvider(provider: string, apiKey?: string | null): OpenAI 
         apiKey,
         baseURL: "https://api.x.ai/v1",
       });
+    case "ollama": {
+      const ollamaUrl = baseUrl || "http://localhost:11434/v1";
+      return new OpenAI({
+        apiKey: "ollama",
+        baseURL: ollamaUrl,
+      });
+    }
+    case "custom": {
+      if (!baseUrl) throw new Error("Base URL для кастомного провайдера не указан");
+      return new OpenAI({
+        apiKey: apiKey || "no-key",
+        baseURL: baseUrl,
+      });
+    }
     default:
       return openrouterClient;
   }
 }
 
 export async function generateWithLlm(
-  setting: LlmSetting | { provider: string; modelId: string; apiKey?: string | null },
+  setting: LlmSettingLike,
   options: LlmGenerateOptions
 ): Promise<string> {
-  const client = getClientForProvider(setting.provider, setting.apiKey);
+  const client = getClientForProvider(setting);
 
   const createOptions: any = {
     model: setting.modelId,
@@ -79,7 +105,7 @@ export async function generateWithLlm(
     max_tokens: options.maxTokens || 8192,
   };
 
-  if (options.jsonMode && setting.provider !== "anthropic") {
+  if (options.jsonMode && setting.provider !== "anthropic" && setting.provider !== "ollama") {
     createOptions.response_format = { type: "json_object" };
   }
 

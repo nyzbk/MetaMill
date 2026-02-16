@@ -108,10 +108,65 @@ export const llmSettings = pgTable("llm_settings", {
   modelId: text("model_id").notNull(),
   displayName: text("display_name").notNull(),
   apiKey: text("api_key"),
+  baseUrl: text("base_url"),
   isDefault: boolean("is_default").default(false),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
+
+export const trendItems = pgTable("trend_items", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  url: text("url"),
+  source: text("source").notNull(),
+  description: text("description"),
+  score: integer("score").default(0),
+  category: text("category"),
+  fetchedAt: timestamp("fetched_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertTrendItemSchema = createInsertSchema(trendItems).omit({
+  id: true,
+  fetchedAt: true,
+});
+export type InsertTrendItem = z.infer<typeof insertTrendItemSchema>;
+export type TrendItem = typeof trendItems.$inferSelect;
+
+export const keywordMonitors = pgTable("keyword_monitors", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  keyword: text("keyword").notNull(),
+  platform: text("platform").notNull().default("threads"),
+  isActive: boolean("is_active").default(true).notNull(),
+  lastCheckedAt: timestamp("last_checked_at"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertKeywordMonitorSchema = createInsertSchema(keywordMonitors).omit({
+  id: true,
+  createdAt: true,
+  lastCheckedAt: true,
+});
+export type InsertKeywordMonitor = z.infer<typeof insertKeywordMonitorSchema>;
+export type KeywordMonitor = typeof keywordMonitors.$inferSelect;
+
+export const monitorResults = pgTable("monitor_results", {
+  id: serial("id").primaryKey(),
+  monitorId: integer("monitor_id").notNull(),
+  userId: text("user_id").notNull(),
+  threadText: text("thread_text").notNull(),
+  author: text("author"),
+  url: text("url"),
+  likeCount: integer("like_count").default(0),
+  fetchedAt: timestamp("fetched_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertMonitorResultSchema = createInsertSchema(monitorResults).omit({
+  id: true,
+  fetchedAt: true,
+});
+export type InsertMonitorResult = z.infer<typeof insertMonitorResultSchema>;
+export type MonitorResult = typeof monitorResults.$inferSelect;
 
 export const insertLlmSettingSchema = createInsertSchema(llmSettings).omit({
   id: true,

@@ -1,13 +1,15 @@
 import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertAccountSchema, insertTemplateSchema, insertPostSchema, insertScheduledJobSchema, insertLlmSettingSchema, llmSettings } from "@shared/schema";
+import { insertAccountSchema, insertTemplateSchema, insertPostSchema, insertScheduledJobSchema, insertLlmSettingSchema, insertKeywordMonitorSchema, llmSettings, keywordMonitors, monitorResults } from "@shared/schema";
 import { generateWithLlm, AVAILABLE_MODELS } from "./llm";
 import { getThreadsAuthUrl, exchangeCodeForToken, exchangeForLongLivedToken, getThreadsProfile, publishThreadChain } from "./threads-api";
 import { getSchedulerStatus } from "./scheduler";
 import { searchThreadsByKeyword, getUserThreads, lookupThreadsUser, sortByEngagement, filterViralThreads, importThreadAsTemplate, importMultipleAsTemplate } from "./threads-scraper";
+import { getTrends, refreshTrends } from "./trends";
+import { repurposeToThread } from "./repurpose";
 import { db } from "./db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import crypto from "crypto";
 import { isAuthenticated } from "./replit_integrations/auth";
 
@@ -256,7 +258,7 @@ h1{color:#9b59b6}h2{color:#b07ed8;margin-top:28px}a{color:#9b59b6}</style></head
       const { topic, reference, style, branches, directives, provider, modelId, templateId } = req.body;
       if (!topic) return res.status(400).json({ message: "Topic is required" });
 
-      let llmSetting: { provider: string; modelId: string; apiKey?: string | null } = {
+      let llmSetting: { provider: string; modelId: string; apiKey?: string | null; baseUrl?: string | null } = {
         provider: "openrouter",
         modelId: "meta-llama/llama-3.3-70b-instruct",
       };
@@ -268,6 +270,7 @@ h1{color:#9b59b6}h2{color:#b07ed8;margin-top:28px}a{color:#9b59b6}</style></head
           provider,
           modelId,
           apiKey: match?.apiKey || null,
+          baseUrl: match?.baseUrl || null,
         };
       } else {
         const defaultSetting = await storage.getDefaultLlmSetting(userId);
@@ -670,6 +673,146 @@ Write in Russian language.`;
         status: "active",
       });
       res.json(template);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── Meta API Config (for wizard) ──
+  app.get("/api/meta/config", isAuthenticated, (_req, res) => {
+    const hasAppId = !!process.env.META_APP_ID;
+    const hasAppSecret = !!process.env.META_APP_SECRET;
+    let redirectUri = "";
+    if (process.env.THREADS_REDIRECT_URI) {
+      redirectUri = process.env.THREADS_REDIRECT_URI;
+    } else if (process.env.REPLIT_DEPLOYMENT_URL) {
+      redirectUri = `https://${process.env.REPLIT_DEPLOYMENT_URL}/api/auth/threads/callback`;
+    } else if (process.env.REPLIT_DEV_DOMAIN) {
+      redirectUri = `https://${process.env.REPLIT_DEV_DOMAIN}/api/auth/threads/callback`;
+    }
+    res.json({
+      hasAppId,
+      hasAppSecret,
+      redirectUri,
+      configured: hasAppId && hasAppSecret,
+    });
+  });
+
+  // ── Trends ──
+  app.get("/api/trends", isAuthenticated, async (_req, res) => {
+    try {
+      const items = await getTrends(50);
+      res.json(items);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/trends/refresh", isAuthenticated, async (_req, res) => {
+    try {
+      const count = await refreshTrends();
+      res.json({ refreshed: count });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── Keyword Monitors ──
+  app.get("/api/keyword-monitors", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const monitors = await db.select().from(keywordMonitors).where(eq(keywordMonitors.userId, userId)).orderBy(desc(keywordMonitors.createdAt));
+    res.json(monitors);
+  });
+
+  app.post("/api/keyword-monitors", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const parsed = insertKeywordMonitorSchema.safeParse({ ...req.body, userId });
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const [monitor] = await db.insert(keywordMonitors).values(parsed.data).returning();
+    res.status(201).json(monitor);
+  });
+
+  app.delete("/api/keyword-monitors/:id", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const id = parseInt(req.params.id as string);
+    await db.delete(keywordMonitors).where(and(eq(keywordMonitors.id, id), eq(keywordMonitors.userId, userId)));
+    await db.delete(monitorResults).where(eq(monitorResults.monitorId, id));
+    res.status(204).send();
+  });
+
+  app.get("/api/keyword-monitors/:id/results", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const id = parseInt(req.params.id as string);
+    const results = await db.select().from(monitorResults).where(
+      and(eq(monitorResults.monitorId, id), eq(monitorResults.userId, userId))
+    ).orderBy(desc(monitorResults.fetchedAt)).limit(50);
+    res.json(results);
+  });
+
+  app.post("/api/keyword-monitors/:id/check", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const id = parseInt(req.params.id as string);
+      const [monitor] = await db.select().from(keywordMonitors).where(
+        and(eq(keywordMonitors.id, id), eq(keywordMonitors.userId, userId))
+      );
+      if (!monitor) return res.status(404).json({ message: "Monitor not found" });
+
+      const token = await getThreadsAccessToken(userId);
+      if (!token) return res.status(400).json({ message: "Нет токена Threads API" });
+
+      const threads = await searchThreadsByKeyword(token, monitor.keyword, 20);
+      const sorted = sortByEngagement(threads);
+
+      const newResults = [];
+      for (const t of sorted.slice(0, 10)) {
+        const [inserted] = await db.insert(monitorResults).values({
+          monitorId: id,
+          userId,
+          threadText: t.text || "",
+          author: t.username || null,
+          url: t.id ? `https://threads.net/t/${t.id}` : null,
+          likeCount: t.like_count || 0,
+        }).returning();
+        newResults.push(inserted);
+      }
+
+      await db.update(keywordMonitors).set({ lastCheckedAt: new Date() }).where(eq(keywordMonitors.id, id));
+
+      res.json({ found: newResults.length, results: newResults });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── Content Repurpose ──
+  app.post("/api/repurpose", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const { url, branches, style, provider, modelId } = req.body;
+      if (!url) return res.status(400).json({ message: "URL обязателен" });
+
+      let llmSetting: { provider: string; modelId: string; apiKey?: string | null; baseUrl?: string | null } = {
+        provider: "openrouter",
+        modelId: "meta-llama/llama-3.3-70b-instruct",
+      };
+
+      if (provider && modelId) {
+        const allSettings = await storage.getLlmSettings(userId);
+        const match = allSettings.find(s => s.provider === provider && s.modelId === modelId);
+        llmSetting = { provider, modelId, apiKey: match?.apiKey || null, baseUrl: match?.baseUrl || null };
+      } else {
+        const defaultSetting = await storage.getDefaultLlmSetting(userId);
+        if (defaultSetting) llmSetting = defaultSetting;
+      }
+
+      const result = await repurposeToThread(url, {
+        branches: branches || 5,
+        style,
+        ...llmSetting,
+        userId,
+      });
+      res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

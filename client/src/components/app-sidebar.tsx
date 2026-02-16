@@ -25,16 +25,30 @@ import {
   Settings,
   Search,
   LogOut,
+  TrendingUp,
+  Radar,
+  BookOpen,
+  Link2,
 } from "lucide-react";
 
-const navItems = [
+const mainItems = [
   { title: "Панель", url: "/", icon: LayoutDashboard },
   { title: "Аккаунты", url: "/accounts", icon: Users },
   { title: "Шаблоны", url: "/templates", icon: FileText },
   { title: "AI Генератор", url: "/generator", icon: Sparkles },
   { title: "Авто-постинг", url: "/scheduler", icon: CalendarClock },
+];
+
+const toolItems = [
+  { title: "Тренды", url: "/trends", icon: TrendingUp },
+  { title: "Мониторинг", url: "/monitoring", icon: Radar },
+  { title: "Переработка", url: "/repurpose", icon: Link2 },
   { title: "Исследование", url: "/research", icon: Search },
   { title: "Тест треда", url: "/test", icon: FlaskConical },
+];
+
+const systemItems = [
+  { title: "Meta API", url: "/meta-wizard", icon: BookOpen },
   { title: "Настройки", url: "/settings", icon: Settings },
 ];
 
@@ -65,10 +79,50 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel className="text-[10px] uppercase tracking-widest text-muted-foreground/60 px-4">Навигация</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-[10px] uppercase tracking-widest text-muted-foreground/60 px-4">Основное</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => {
+              {mainItems.map((item) => {
+                const isActive = location === item.url || (item.url !== "/" && location.startsWith(item.url));
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild data-active={isActive}>
+                      <Link href={item.url} data-testid={`link-nav-${item.title.toLowerCase().replace(/\s/g, "-")}`}>
+                        <item.icon className="w-4 h-4" />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
+          <SidebarGroupLabel className="text-[10px] uppercase tracking-widest text-muted-foreground/60 px-4">Инструменты</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {toolItems.map((item) => {
+                const isActive = location === item.url || (item.url !== "/" && location.startsWith(item.url));
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild data-active={isActive}>
+                      <Link href={item.url} data-testid={`link-nav-${item.title.toLowerCase().replace(/\s/g, "-")}`}>
+                        <item.icon className="w-4 h-4" />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
+          <SidebarGroupLabel className="text-[10px] uppercase tracking-widest text-muted-foreground/60 px-4">Система</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {systemItems.map((item) => {
                 const isActive = location === item.url || (item.url !== "/" && location.startsWith(item.url));
                 return (
                   <SidebarMenuItem key={item.title}>
