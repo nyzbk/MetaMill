@@ -134,7 +134,22 @@ export async function exchangeForLongLivedToken(shortToken: string): Promise<{
 export async function getThreadsProfile(accessToken: string, userId: string): Promise<{
   username: string;
   profilePictureUrl?: string;
+  threadsUserId: string;
 }> {
+  const meRes = await fetch(
+    `${THREADS_API_URL}/me?fields=id,username,threads_profile_picture_url&access_token=${accessToken}`
+  );
+  const meData = await safeFetchJson(meRes, "Получение профиля через /me");
+
+  if (!meData.error) {
+    return {
+      username: meData.username || meData.id || userId,
+      profilePictureUrl: meData.threads_profile_picture_url,
+      threadsUserId: meData.id ? String(meData.id) : userId,
+    };
+  }
+
+  console.log("[threads-api] /me failed, trying /${userId}:", meData.error);
   const res = await fetch(
     `${THREADS_API_URL}/${userId}?fields=username,threads_profile_picture_url&access_token=${accessToken}`
   );
@@ -147,6 +162,7 @@ export async function getThreadsProfile(accessToken: string, userId: string): Pr
   return {
     username: data.username || data.id,
     profilePictureUrl: data.threads_profile_picture_url,
+    threadsUserId: data.id ? String(data.id) : userId,
   };
 }
 

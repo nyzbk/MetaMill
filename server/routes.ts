@@ -461,17 +461,19 @@ Write in Russian language.`;
       const { accessToken: longToken, expiresIn } = await exchangeForLongLivedToken(shortToken);
       console.log("Got long-lived token, fetching profile...");
       const profile = await getThreadsProfile(longToken, threadsUserId);
-      console.log("Profile fetched:", profile.username);
+      console.log("Profile fetched:", profile.username, "threadsUserId:", profile.threadsUserId);
+
+      const resolvedThreadsUserId = profile.threadsUserId || threadsUserId;
 
       const allAccounts = await storage.getAccounts(userId);
       const existing = allAccounts.find(
-        (a) => a.threadsUserId === threadsUserId
+        (a) => a.threadsUserId === resolvedThreadsUserId || a.threadsUserId === threadsUserId
       );
 
       if (existing) {
         await storage.updateAccount(existing.id, {
           accessToken: longToken,
-          threadsUserId: threadsUserId,
+          threadsUserId: resolvedThreadsUserId,
           username: profile.username,
           avatarUrl: profile.profilePictureUrl || existing.avatarUrl,
           tokenExpiresAt: new Date(Date.now() + expiresIn * 1000),
@@ -484,7 +486,7 @@ Write in Russian language.`;
           username: profile.username,
           platform: "threads",
           accessToken: longToken,
-          threadsUserId: threadsUserId,
+          threadsUserId: resolvedThreadsUserId,
           avatarUrl: profile.profilePictureUrl,
           tokenExpiresAt: new Date(Date.now() + expiresIn * 1000),
           status: "active",
