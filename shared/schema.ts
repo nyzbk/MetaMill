@@ -23,6 +23,8 @@ export const accounts = pgTable("accounts", {
   platform: text("platform").notNull().default("threads"),
   avatarUrl: text("avatar_url"),
   accessToken: text("access_token"),
+  threadsUserId: text("threads_user_id"),
+  tokenExpiresAt: timestamp("token_expires_at"),
   status: text("status").notNull().default("active"),
   followers: integer("followers").default(0),
   postsCount: integer("posts_count").default(0),

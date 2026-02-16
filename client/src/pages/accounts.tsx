@@ -1,17 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, MoreHorizontal, Wifi, WifiOff, AtSign } from "lucide-react";
+import { Plus, MoreHorizontal, Wifi, WifiOff, AtSign, Link2, ExternalLink, Shield, ShieldCheck } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { Account } from "@shared/schema";
 
@@ -21,6 +21,43 @@ export default function Accounts() {
   const [username, setUsername] = useState("");
   const [platform, setPlatform] = useState("threads");
   const [accessToken, setAccessToken] = useState("");
+
+  const { data: authStatus } = useQuery<{ configured: boolean }>({
+    queryKey: ["/api/auth/threads/status"],
+  });
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("auth_success")) {
+      toast({ title: "Аккаунт подключён через Threads OAuth" });
+      queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
+      window.history.replaceState({}, "", "/accounts");
+    }
+    if (params.get("auth_error")) {
+      toast({
+        title: "Ошибка авторизации",
+        description: decodeURIComponent(params.get("auth_error") || ""),
+        variant: "destructive",
+      });
+      window.history.replaceState({}, "", "/accounts");
+    }
+  }, []);
+
+  const connectThreads = async () => {
+    try {
+      const res = await apiRequest("GET", "/api/auth/threads");
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch (e: any) {
+      toast({
+        title: "Ошибка",
+        description: e.message || "Не удалось начать авторизацию",
+        variant: "destructive",
+      });
+    }
+  };
 
   const { data: accounts, isLoading } = useQuery<Account[]>({
     queryKey: ["/api/accounts"],
@@ -70,13 +107,24 @@ export default function Accounts() {
           <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Аккаунты</h1>
           <p className="text-sm text-muted-foreground mt-1">Управление подключёнными аккаунтами Threads и Instagram</p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-add-account">
-              <Plus className="w-4 h-4 mr-2" />
-              Добавить аккаунт
+        <div className="flex items-center gap-2 flex-wrap">
+          {authStatus?.configured && (
+            <Button
+              variant="outline"
+              onClick={connectThreads}
+              data-testid="button-connect-threads"
+            >
+              <Link2 className="w-4 h-4 mr-2" />
+              Подключить Threads
             </Button>
-          </DialogTrigger>
+          )}
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-add-account">
+                <Plus className="w-4 h-4 mr-2" />
+                Добавить вручную
+              </Button>
+            </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Добавить аккаунт</DialogTitle>
@@ -125,6 +173,7 @@ export default function Accounts() {
             </div>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {accounts && accounts.length > 0 ? (
@@ -135,6 +184,7 @@ export default function Accounts() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-3">
                     <Avatar>
+                      {acc.avatarUrl && <AvatarImage src={acc.avatarUrl} />}
                       <AvatarFallback className="bg-muted text-muted-foreground text-sm font-semibold">
                         {acc.username.charAt(0).toUpperCase()}
                       </AvatarFallback>
@@ -179,9 +229,23 @@ export default function Accounts() {
                   </div>
                 </div>
 
-                {!acc.accessToken && (
+                {acc.threadsUserId && acc.accessToken ? (
+                  <div className="mt-3 p-2 rounded-md bg-emerald-500/10 border border-emerald-500/20">
+                    <div className="flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                      <p className="text-xs text-emerald-400">OAuth подключён — публикация активна</p>
+                    </div>
+                  </div>
+                ) : acc.accessToken ? (
                   <div className="mt-3 p-2 rounded-md bg-amber-500/10 border border-amber-500/20">
-                    <p className="text-xs text-amber-400">Нет API токена — публикация отключена</p>
+                    <div className="flex items-center gap-1.5">
+                      <Shield className="w-3.5 h-3.5 text-amber-400" />
+                      <p className="text-xs text-amber-400">Ручной токен — подключите OAuth для надёжности</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-3 p-2 rounded-md bg-red-500/10 border border-red-500/20">
+                    <p className="text-xs text-red-400">Нет API токена — публикация отключена</p>
                   </div>
                 )}
               </CardContent>

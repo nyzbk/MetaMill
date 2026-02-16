@@ -3,8 +3,10 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertAccountSchema, insertTemplateSchema, insertPostSchema, insertScheduledJobSchema, insertLlmSettingSchema, llmSettings } from "@shared/schema";
 import { generateWithLlm, AVAILABLE_MODELS } from "./llm";
+import { getThreadsAuthUrl, exchangeCodeForToken, exchangeForLongLivedToken, getThreadsProfile, publishThreadChain } from "./threads-api";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
+import crypto from "crypto";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -190,78 +192,139 @@ Write in Russian language.`;
     }
   });
 
-  // ── Publish (Meta API simulation + DB save) ──
+  // ── Threads OAuth ──
+  const oauthStates = new Map<string, { timestamp: number }>();
+
+  app.get("/api/auth/threads", (_req, res) => {
+    try {
+      const state = crypto.randomBytes(16).toString("hex");
+      oauthStates.set(state, { timestamp: Date.now() });
+      setTimeout(() => oauthStates.delete(state), 600000);
+      const authUrl = getThreadsAuthUrl(state);
+      res.json({ url: authUrl });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/auth/threads/callback", async (req, res) => {
+    try {
+      const { code, state, error } = req.query;
+      if (error) {
+        return res.redirect("/?auth_error=" + encodeURIComponent(String(error)));
+      }
+      if (!code || !state) {
+        return res.redirect("/?auth_error=missing_params");
+      }
+      if (!oauthStates.has(String(state))) {
+        return res.redirect("/?auth_error=invalid_state");
+      }
+      oauthStates.delete(String(state));
+
+      const { accessToken: shortToken, userId } = await exchangeCodeForToken(String(code));
+      const { accessToken: longToken, expiresIn } = await exchangeForLongLivedToken(shortToken);
+      const profile = await getThreadsProfile(longToken, userId);
+
+      const allAccounts = await storage.getAccounts();
+      const existing = allAccounts.find(
+        (a) => a.threadsUserId === userId
+      );
+
+      if (existing) {
+        await storage.updateAccount(existing.id, {
+          accessToken: longToken,
+          threadsUserId: userId,
+          username: profile.username,
+          avatarUrl: profile.profilePictureUrl || existing.avatarUrl,
+          tokenExpiresAt: new Date(Date.now() + expiresIn * 1000),
+          status: "active",
+        });
+      } else {
+        await storage.createAccount({
+          username: profile.username,
+          platform: "threads",
+          accessToken: longToken,
+          threadsUserId: userId,
+          avatarUrl: profile.profilePictureUrl,
+          tokenExpiresAt: new Date(Date.now() + expiresIn * 1000),
+          status: "active",
+        });
+      }
+
+      res.redirect("/accounts?auth_success=true");
+    } catch (error: any) {
+      console.error("OAuth callback error:", error);
+      res.redirect("/?auth_error=" + encodeURIComponent(error.message));
+    }
+  });
+
+  app.get("/api/auth/threads/status", (_req, res) => {
+    const hasCredentials = !!(process.env.META_APP_ID && process.env.META_APP_SECRET);
+    res.json({ configured: hasCredentials });
+  });
+
+  // ── Publish (Threads API + DB save) ──
   app.post("/api/publish", async (req, res) => {
     try {
       const { accountId, branches } = req.body;
       if (!accountId || !branches) return res.status(400).json({ message: "accountId and branches required" });
+      if (!Array.isArray(branches) || branches.length === 0 || branches.length > 25) {
+        return res.status(400).json({ message: "branches must be an array of 1-25 strings" });
+      }
+      if (!branches.every((b: any) => typeof b === "string" && b.length > 0 && b.length <= 500)) {
+        return res.status(400).json({ message: "Each branch must be a non-empty string under 500 characters" });
+      }
 
       const account = await storage.getAccount(accountId);
       if (!account) return res.status(404).json({ message: "Account not found" });
 
-      const createdPosts = [];
-      let parentId: string | undefined;
+      if (account.tokenExpiresAt && new Date(account.tokenExpiresAt) < new Date()) {
+        return res.status(401).json({ message: "Токен OAuth истёк. Переподключите аккаунт через Threads." });
+      }
 
+      if (!account.accessToken || !account.threadsUserId) {
+        const createdPosts = [];
+        for (let i = 0; i < branches.length; i++) {
+          const post = await storage.createPost({
+            accountId,
+            content: branches[i],
+            threadPosition: i,
+            status: "draft",
+          });
+          createdPosts.push(post);
+        }
+        return res.json({
+          posts: createdPosts,
+          warning: "Аккаунт не подключён через OAuth. Посты сохранены как черновики.",
+        });
+      }
+
+      const { mediaIds, errors } = await publishThreadChain(
+        account.accessToken,
+        account.threadsUserId,
+        branches
+      );
+
+      const createdPosts = [];
       for (let i = 0; i < branches.length; i++) {
-        const postData: any = {
+        const post = await storage.createPost({
           accountId,
           content: branches[i],
           threadPosition: i,
-          status: "published",
-          publishedAt: new Date(),
-        };
-
-        if (parentId) {
-          postData.parentPostId = parentId;
-        }
-
-        if (account.accessToken) {
-          try {
-            const createUrl = `https://graph.threads.net/v1.0/me/threads`;
-            const createBody: any = {
-              text: branches[i],
-              media_type: "TEXT",
-              access_token: account.accessToken,
-            };
-            if (parentId) {
-              createBody.reply_to_id = parentId;
-            }
-
-            const createRes = await fetch(createUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(createBody),
-            });
-            const createData = await createRes.json();
-
-            if (createData.id) {
-              const publishUrl = `https://graph.threads.net/v1.0/me/threads_publish`;
-              const publishRes = await fetch(publishUrl, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  creation_id: createData.id,
-                  access_token: account.accessToken,
-                }),
-              });
-              const publishData = await publishRes.json();
-              postData.threadsMediaId = publishData.id || createData.id;
-              parentId = publishData.id || createData.id;
-            }
-          } catch (apiError) {
-            console.error("Threads API error:", apiError);
-            postData.status = "failed";
-          }
-        } else {
-          postData.status = "draft";
-          parentId = `local-${Date.now()}-${i}`;
-        }
-
-        const post = await storage.createPost(postData);
+          threadsMediaId: mediaIds[i] || null,
+          parentPostId: i > 0 ? mediaIds[i - 1] || null : null,
+          status: mediaIds[i] ? "published" : "failed",
+          publishedAt: mediaIds[i] ? new Date() : null,
+        });
         createdPosts.push(post);
       }
 
-      res.json({ posts: createdPosts });
+      res.json({
+        posts: createdPosts,
+        published: mediaIds.length,
+        failed: errors.length,
+        errors: errors.length > 0 ? errors : undefined,
+      });
     } catch (error: any) {
       console.error("Publish error:", error);
       res.status(500).json({ message: error.message || "Publishing failed" });
