@@ -20,12 +20,20 @@ function getRedirectUri(): string {
   if (process.env.THREADS_REDIRECT_URI) {
     return process.env.THREADS_REDIRECT_URI;
   }
-  const host = process.env.REPLIT_DEPLOYMENT_URL
-    ? process.env.REPLIT_DEPLOYMENT_URL
-    : process.env.REPLIT_DEV_DOMAIN
-      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-      : "http://localhost:5000";
-  return `${host}/api/auth/threads/callback`;
+  let host: string;
+  if (process.env.REPLIT_DEPLOYMENT_URL) {
+    host = process.env.REPLIT_DEPLOYMENT_URL;
+    if (!host.startsWith("https://")) {
+      host = `https://${host}`;
+    }
+  } else if (process.env.REPLIT_DEV_DOMAIN) {
+    host = `https://${process.env.REPLIT_DEV_DOMAIN}`;
+  } else {
+    host = "http://localhost:5000";
+  }
+  const uri = `${host}/api/auth/threads/callback`;
+  console.log("[threads-api] Redirect URI:", uri);
+  return uri;
 }
 
 export function getThreadsAuthUrl(state: string): string {
@@ -78,11 +86,13 @@ export async function exchangeForLongLivedToken(shortToken: string): Promise<{
     access_token: shortToken,
   });
 
-  const res = await fetch(`${THREADS_TOKEN_URL}?${params.toString()}`);
+  const longLivedTokenUrl = "https://graph.threads.net/access_token";
+  const res = await fetch(`${longLivedTokenUrl}?${params.toString()}`);
   const data = await res.json();
 
   if (data.error) {
-    throw new Error(data.error_message || "Long-lived token exchange failed");
+    console.error("Long-lived token exchange error:", JSON.stringify(data));
+    throw new Error(data.error?.message || data.error_message || "Long-lived token exchange failed");
   }
 
   return {
