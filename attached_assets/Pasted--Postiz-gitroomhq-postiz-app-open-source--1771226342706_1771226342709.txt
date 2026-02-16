@@ -1,0 +1,56 @@
+Центральные платформы и управление воркфлоу
+Postiz (gitroomhq/postiz-app) — основной open-source хаб для планирования и публикации контента на 19+ платформах (Threads, Instagram, X, и др.).
+
+Ссылка: https://github.com/gitroomhq/postiz-app
+
+n8n Workflows Archive (nusquama/n8nworkflows.xyz) — архив публичных воркфлоу для n8n, включая автоматизацию маркетинга и сбора данных.
+
+Ссылка: https://github.com/nusquama/n8nworkflows.xyz
+
+Переработка «сырья» и генерация контента
+RedToBlog02 (kliewerdaniel/RedToBlog02) — система превращения постов и обсуждений из Reddit в структурированные статьи и треды с помощью ИИ-агентов.
+
+Ссылка: https://github.com/kliewerdaniel/RedToBlog02
+
+AI-Youtube-Shorts-Generator (SamurAIGPT) — полностью автоматизированный завод по созданию «безликих» видео (Shorts/Reels) из трендовых тем.
+
+Ссылка: https://github.com/SamurAIGPT/AI-Youtube-Shorts-Generator
+
+Viral-Faceless-Shorts-Generator (Dark2C) — генерация видео для соцсетей с использованием ИИ-сценариев, озвучки и динамического монтажа.
+
+Ссылка: https://github.com/Dark2C/Viral-Faceless-Shorts-Generator
+
+Инструменты для Threads
+Threads-API (Danie1) — неофициальный Python-клиент для публикации постов (текст, фото, карусели) и чтения ленты.
+
+Ссылка: https://github.com/Danie1/threads-api
+
+MetaThreads (iSarabjitDhiman) — библиотека для извлечения данных о пользователях, ответах и друзьях в Threads.
+
+Ссылка: https://github.com/iSarabjitDhiman/MetaThreads
+
+Threads-Scraper (Zeeshanahmad4) — инструмент для сбора публичных данных и постов без авторизации.
+
+Ссылка: https://github.com/Zeeshanahmad4/Threads-Scraper
+
+Threads-Bot (dwainmedenslry5pg) — система для автоматизации постов, комментариев и управления несколькими аккаунтами.
+
+Ссылка: https://github.com/dwainmedenslry5pg/threads-bot
+
+Инструменты для Instagram
+Instagram-Automation (Z786ZA) — комплексный инструментарий для автоматизации вовлеченности, планирования постов и управления DM.
+
+Ссылка: https://github.com/Z786ZA/Instagram-Automation
+
+InstaInsight (rajab-bett-analytics) — асинхронный скрапер для глубокого анализа профилей, постов и уровня вовлеченности.
+
+Ссылка: https://github.com/rajab-bett-analytics/InstaInsight
+
+Автоматизация роста и мониторинг (Appilot)
+Threads-Auto-Follow-Bot (abernathyregina) — Android-автоматизация для массовых подписок на основе хэштегов и интересов.
+
+Ссылка: https://github.com/abernathyregina/Threads-Auto-Follow-Bot
+
+Threads-Keyword-Monitor-Bot (abernathyregina) — мониторинг ключевых слов в реальном времени для быстрого реагирования в тредах.
+
+Ссылка: https://github.com/abernathyregina/Threads-Keyword-Monitor-Bot
