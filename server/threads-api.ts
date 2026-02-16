@@ -17,8 +17,11 @@ function getAppSecret(): string {
 }
 
 function getRedirectUri(): string {
-  const host = process.env.REPL_SLUG
-    ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
+  if (process.env.THREADS_REDIRECT_URI) {
+    return process.env.THREADS_REDIRECT_URI;
+  }
+  const host = process.env.REPLIT_DEPLOYMENT_URL
+    ? process.env.REPLIT_DEPLOYMENT_URL
     : process.env.REPLIT_DEV_DOMAIN
       ? `https://${process.env.REPLIT_DEV_DOMAIN}`
       : "http://localhost:5000";
