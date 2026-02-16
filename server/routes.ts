@@ -15,6 +15,65 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
+  // ── Legal Pages ──
+  app.get("/privacy", (_req, res) => {
+    res.send(`<!DOCTYPE html>
+<html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>MetaMill - Политика конфиденциальности</title>
+<style>body{font-family:Inter,sans-serif;max-width:700px;margin:40px auto;padding:0 20px;color:#e0e0e0;background:#000}
+h1{color:#9b59b6}h2{color:#b07ed8;margin-top:28px}a{color:#9b59b6}</style></head>
+<body><h1>Политика конфиденциальности MetaMill</h1>
+<p>Дата вступления в силу: 16 февраля 2026</p>
+<h2>1. Какие данные мы собираем</h2>
+<p>MetaMill собирает данные, необходимые для работы с Threads API: идентификатор аккаунта Threads, токен доступа OAuth, публичный профиль пользователя. Мы не собираем пароли и не храним личную переписку.</p>
+<h2>2. Как мы используем данные</h2>
+<p>Данные используются исключительно для публикации контента в Threads от имени пользователя, генерации контента с помощью AI и управления расписанием публикаций.</p>
+<h2>3. Хранение данных</h2>
+<p>Данные хранятся в защищённой базе данных PostgreSQL. Токены доступа шифруются. Данные удаляются по запросу пользователя.</p>
+<h2>4. Передача данных третьим лицам</h2>
+<p>Мы не продаём и не передаём персональные данные третьим лицам, за исключением поставщиков AI-сервисов (OpenRouter, OpenAI и др.) для генерации контента. Контент передаётся без привязки к личности пользователя.</p>
+<h2>5. Удаление данных</h2>
+<p>Пользователь может запросить удаление всех своих данных, отключив аккаунт в приложении или связавшись с нами. Данные будут удалены в течение 30 дней.</p>
+<h2>6. Контакты</h2>
+<p>По вопросам конфиденциальности: ultaultimatum@gmail.com</p>
+</body></html>`);
+  });
+
+  app.get("/terms", (_req, res) => {
+    res.send(`<!DOCTYPE html>
+<html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>MetaMill - Пользовательское соглашение</title>
+<style>body{font-family:Inter,sans-serif;max-width:700px;margin:40px auto;padding:0 20px;color:#e0e0e0;background:#000}
+h1{color:#9b59b6}h2{color:#b07ed8;margin-top:28px}a{color:#9b59b6}</style></head>
+<body><h1>Пользовательское соглашение MetaMill</h1>
+<p>Дата вступления в силу: 16 февраля 2026</p>
+<h2>1. Описание сервиса</h2>
+<p>MetaMill — платформа автоматизации контента для Threads.net. Сервис предоставляет инструменты AI-генерации, планирования и публикации контента.</p>
+<h2>2. Использование</h2>
+<p>Пользователь несёт ответственность за контент, публикуемый через MetaMill. Запрещено использование для спама, разжигания ненависти или нарушения правил Threads.</p>
+<h2>3. Ограничение ответственности</h2>
+<p>Сервис предоставляется «как есть». Мы не гарантируем бесперебойную работу Threads API и не несём ответственности за действия Meta в отношении аккаунтов пользователей.</p>
+</body></html>`);
+  });
+
+  app.get("/data-deletion", (_req, res) => {
+    res.send(`<!DOCTYPE html>
+<html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>MetaMill - Удаление данных</title>
+<style>body{font-family:Inter,sans-serif;max-width:700px;margin:40px auto;padding:0 20px;color:#e0e0e0;background:#000}
+h1{color:#9b59b6}h2{color:#b07ed8;margin-top:28px}a{color:#9b59b6}</style></head>
+<body><h1>Инструкции по удалению данных</h1>
+<p>Для удаления ваших данных из MetaMill:</p>
+<ol>
+<li>Откройте MetaMill и перейдите в раздел «Аккаунты»</li>
+<li>Отключите ваш аккаунт Threads</li>
+<li>Все связанные данные будут удалены автоматически</li>
+</ol>
+<p>Или отправьте запрос на удаление на: ultaultimatum@gmail.com</p>
+<p>Данные будут удалены в течение 30 дней с момента запроса.</p>
+</body></html>`);
+  });
+
   // ── Accounts ──
   app.get("/api/accounts", async (_req, res) => {
     const data = await storage.getAccounts();
