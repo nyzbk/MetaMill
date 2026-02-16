@@ -306,7 +306,27 @@ Write in Russian language.`;
   });
 
   // ── Threads OAuth ──
-  const oauthStates = new Map<string, { timestamp: number }>();
+  function createOAuthState(): string {
+    const timestamp = Date.now().toString();
+    const secret = process.env.SESSION_SECRET || "metamill-oauth-secret";
+    const hmac = crypto.createHmac("sha256", secret).update(timestamp).digest("hex").slice(0, 16);
+    return Buffer.from(`${timestamp}:${hmac}`).toString("base64url");
+  }
+
+  function verifyOAuthState(state: string): boolean {
+    try {
+      const decoded = Buffer.from(state, "base64url").toString();
+      const [timestamp, hmac] = decoded.split(":");
+      if (!timestamp || !hmac) return false;
+      const secret = process.env.SESSION_SECRET || "metamill-oauth-secret";
+      const expected = crypto.createHmac("sha256", secret).update(timestamp).digest("hex").slice(0, 16);
+      if (hmac !== expected) return false;
+      const age = Date.now() - parseInt(timestamp);
+      return age < 600000;
+    } catch {
+      return false;
+    }
+  }
 
   app.post("/api/auth/threads/deauthorize", (req, res) => {
     console.log("[threads] Deauthorize callback received:", req.body);
@@ -328,9 +348,7 @@ Write in Russian language.`;
 
   app.get("/api/auth/threads", (_req, res) => {
     try {
-      const state = crypto.randomBytes(16).toString("hex");
-      oauthStates.set(state, { timestamp: Date.now() });
-      setTimeout(() => oauthStates.delete(state), 600000);
+      const state = createOAuthState();
       const authUrl = getThreadsAuthUrl(state);
       res.json({ url: authUrl });
     } catch (error: any) {
@@ -348,11 +366,10 @@ Write in Russian language.`;
       if (!code || !state) {
         return res.redirect("/accounts?auth_error=missing_params");
       }
-      if (!oauthStates.has(String(state))) {
-        console.log("OAuth state not found. Active states:", oauthStates.size);
+      if (!verifyOAuthState(String(state))) {
+        console.log("OAuth state verification failed");
         return res.redirect("/accounts?auth_error=invalid_state_try_again");
       }
-      oauthStates.delete(String(state));
 
       console.log("Exchanging code for token...");
       const { accessToken: shortToken, userId } = await exchangeCodeForToken(String(code));
