@@ -33,7 +33,7 @@ export default function Landing() {
           </h1>
 
           <p className="text-lg text-muted-foreground max-w-xl mx-auto leading-relaxed">
-            MetaMill автоматизирует весь цикл создания контента для Threads.net — от AI-генерации до публикации. Подключайте аккаунты, создавайте шаблоны, планируйте публикации.
+            MetaMill автоматизирует весь цикл создания контента для Threads — от AI-генерации до публикации. Подключайте аккаунты, создавайте шаблоны, планируйте публикации.
           </p>
 
           <div className="flex items-center justify-center gap-3 flex-wrap pt-4">

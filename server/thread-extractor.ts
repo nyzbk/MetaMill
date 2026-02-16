@@ -29,11 +29,11 @@ function extractMetaTags(html: string): Record<string, string> {
   const metaRegex = /<meta\s+(?:property|name)=["']([^"']+)["']\s+content=["']([^"']*?)["']\s*\/?>/gi;
   let match;
   while ((match = metaRegex.exec(html)) !== null) {
-    tags[match[1]] = match[2];
+    tags[match[1]] = decodeHtmlEntities(match[2]);
   }
   const metaRegex2 = /<meta\s+content=["']([^"']*?)["']\s+(?:property|name)=["']([^"']+)["']\s*\/?>/gi;
   while ((match = metaRegex2.exec(html)) !== null) {
-    tags[match[2]] = match[1];
+    tags[match[2]] = decodeHtmlEntities(match[1]);
   }
   return tags;
 }
@@ -78,17 +78,29 @@ function extractEmbeddedJson(html: string): string[] {
   return texts;
 }
 
-function cleanThreadText(text: string): string {
+function decodeHtmlEntities(text: string): string {
   return text
-    .replace(/\\n/g, "\n")
-    .replace(/\\"/g, '"')
+    .replace(/&#x([0-9A-Fa-f]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&nbsp;/g, " ")
-    .trim();
+    .replace(/&laquo;/g, "\u00AB")
+    .replace(/&raquo;/g, "\u00BB")
+    .replace(/&mdash;/g, "\u2014")
+    .replace(/&ndash;/g, "\u2013")
+    .replace(/&hellip;/g, "\u2026");
+}
+
+function cleanThreadText(text: string): string {
+  return decodeHtmlEntities(
+    text
+      .replace(/\\n/g, "\n")
+      .replace(/\\"/g, '"')
+  ).trim();
 }
 
 function deduplicateTexts(texts: string[]): string[] {
