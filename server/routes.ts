@@ -110,6 +110,28 @@ h1{color:#9b59b6}h2{color:#b07ed8;margin-top:28px}a{color:#9b59b6}</style></head
     res.json(updated);
   });
 
+  app.post("/api/accounts/:id/refresh-token", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const id = parseInt(req.params.id as string);
+      const allAccounts = await storage.getAccounts(userId);
+      const account = allAccounts.find(a => a.id === id);
+      if (!account) return res.status(404).json({ message: "Аккаунт не найден" });
+      if (!account.accessToken) return res.status(400).json({ message: "У аккаунта нет токена" });
+
+      const { accessToken: newToken, expiresIn } = await exchangeForLongLivedToken(account.accessToken);
+      await storage.updateAccount(id, {
+        accessToken: newToken,
+        tokenExpiresAt: new Date(Date.now() + expiresIn * 1000),
+        status: "active",
+      }, userId);
+
+      res.json({ success: true, expiresIn });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // ── Templates ──
   app.get("/api/templates", isAuthenticated, async (req, res) => {
     const userId = getUserId(req);
@@ -337,25 +359,48 @@ Write in Russian language.`;
   });
 
   // ── Threads OAuth ──
-  function createOAuthState(): string {
+  const pendingOAuthStates = new Map<string, { userId: string; createdAt: number }>();
+
+  setInterval(() => {
+    const now = Date.now();
+    const keys: string[] = [];
+    pendingOAuthStates.forEach((val, key) => {
+      if (now - val.createdAt > 600000) keys.push(key);
+    });
+    keys.forEach(k => pendingOAuthStates.delete(k));
+  }, 60000);
+
+  function createOAuthState(userId: string): string {
+    const nonce = crypto.randomBytes(16).toString("hex");
     const timestamp = Date.now().toString();
     const secret = process.env.SESSION_SECRET || "metamill-oauth-secret";
-    const hmac = crypto.createHmac("sha256", secret).update(timestamp).digest("hex").slice(0, 16);
-    return Buffer.from(`${timestamp}:${hmac}`).toString("base64url");
+    const payload = `${timestamp}:${nonce}`;
+    const hmac = crypto.createHmac("sha256", secret).update(payload).digest("hex").slice(0, 16);
+    const state = Buffer.from(`${payload}:${hmac}`).toString("base64url");
+    pendingOAuthStates.set(state, { userId, createdAt: Date.now() });
+    return state;
   }
 
-  function verifyOAuthState(state: string): boolean {
+  function consumeOAuthState(state: string): { valid: boolean; userId: string } {
     try {
       const decoded = Buffer.from(state, "base64url").toString();
-      const [timestamp, hmac] = decoded.split(":");
-      if (!timestamp || !hmac) return false;
+      const parts = decoded.split(":");
+      if (parts.length < 3) return { valid: false, userId: "" };
+      const [timestamp, _nonce, hmac] = [parts[0], parts[1], parts[2]];
+      if (!timestamp || !hmac) return { valid: false, userId: "" };
       const secret = process.env.SESSION_SECRET || "metamill-oauth-secret";
-      const expected = crypto.createHmac("sha256", secret).update(timestamp).digest("hex").slice(0, 16);
-      if (hmac !== expected) return false;
+      const expected = crypto.createHmac("sha256", secret).update(`${timestamp}:${parts[1]}`).digest("hex").slice(0, 16);
+      if (hmac !== expected) return { valid: false, userId: "" };
       const age = Date.now() - parseInt(timestamp);
-      return age < 600000;
+      if (age > 600000) return { valid: false, userId: "" };
+
+      const pending = pendingOAuthStates.get(state);
+      if (!pending) return { valid: false, userId: "" };
+      pendingOAuthStates.delete(state);
+
+      return { valid: true, userId: pending.userId };
     } catch {
-      return false;
+      return { valid: false, userId: "" };
     }
   }
 
@@ -367,8 +412,9 @@ Write in Russian language.`;
   app.post("/api/auth/threads/delete", (req, res) => {
     console.log("[threads] Data deletion request received:", req.body);
     const confirmationCode = crypto.randomBytes(8).toString("hex");
+    const host = process.env.REPLIT_DEPLOYMENT_URL || process.env.REPLIT_DEV_DOMAIN || "localhost:5000";
     res.json({
-      url: `https://${process.env.REPLIT_DEV_DOMAIN || "localhost:5000"}/api/auth/threads/delete-status?code=${confirmationCode}`,
+      url: `https://${host}/api/auth/threads/delete-status?code=${confirmationCode}`,
       confirmation_code: confirmationCode,
     });
   });
@@ -379,7 +425,8 @@ Write in Russian language.`;
 
   app.get("/api/auth/threads", isAuthenticated, (req, res) => {
     try {
-      const state = createOAuthState();
+      const userId = getUserId(req);
+      const state = createOAuthState(userId);
       const authUrl = getThreadsAuthUrl(state);
       res.json({ url: authUrl });
     } catch (error: any) {
@@ -397,12 +444,16 @@ Write in Russian language.`;
       if (!code || !state) {
         return res.redirect("/accounts?auth_error=missing_params");
       }
-      if (!verifyOAuthState(String(state))) {
+      const stateResult = consumeOAuthState(String(state));
+      if (!stateResult.valid) {
         console.log("OAuth state verification failed");
         return res.redirect("/accounts?auth_error=invalid_state_try_again");
       }
 
-      const userId = getUserId(req);
+      const userId = stateResult.userId || getUserId(req);
+      if (!userId) {
+        return res.redirect("/accounts?auth_error=session_expired_login_again");
+      }
 
       console.log("Exchanging code for token...");
       const { accessToken: shortToken, userId: threadsUserId } = await exchangeCodeForToken(String(code));
