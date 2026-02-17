@@ -8,7 +8,7 @@ MetaMill is an industrial AI-powered content automation platform for Threads.net
 - **Backend**: Express.js REST API
 - **Database**: PostgreSQL (Neon) via Drizzle ORM
 - **Auth**: Replit Auth (OpenID Connect) — Google/GitHub/email login, session storage in PostgreSQL, per-user data isolation
-- **AI**: Multi-LLM system — OpenRouter (via Replit AI Integrations) for open-source models + custom API keys for paid providers (GPT, Claude, Gemini, Grok)
+- **AI**: Multi-LLM system — OpenRouter + Groq (free high-speed inference) for open-source models + custom API keys for paid providers (GPT, Claude, Gemini, Grok). Users can add their own OpenRouter/Groq API keys for unlimited usage
 - **Scheduler**: Background polling service (30s interval) for automated content generation & publishing
 - **Design**: Dark futuristic theme (black #000000 background, purple accent hsl(263,70%,50%), Inter + JetBrains Mono fonts)
 
@@ -38,7 +38,7 @@ MetaMill is an industrial AI-powered content automation platform for Threads.net
 0. Multi-user authentication via Replit Auth (OpenID Connect) with per-user data isolation
 1. Multi-account management (Threads & Instagram) with OAuth connection
 2. N-branch thread chain templates with style matching
-3. AI content generation with 11+ LLM models across 7 providers (incl. Ollama/custom endpoints)
+3. AI content generation with 17+ LLM models across 8 providers (OpenRouter, Groq, OpenAI, Anthropic, Google, xAI, Ollama, Custom)
 4. Thread preview/test tool
 5. Background auto-posting scheduler with recurring jobs (pause/resume/run-now)
 6. Publishing to Threads via Meta API (/me/threads endpoints)

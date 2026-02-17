@@ -23,7 +23,8 @@ interface AvailableModel {
 }
 
 const PROVIDER_LABELS: Record<string, string> = {
-  openrouter: "OpenRouter (кредиты Replit)",
+  openrouter: "OpenRouter",
+  groq: "Groq",
   openai: "OpenAI",
   anthropic: "Anthropic (Claude)",
   google: "Google (Gemini)",
@@ -33,7 +34,8 @@ const PROVIDER_LABELS: Record<string, string> = {
 };
 
 const PROVIDER_OPTIONS = [
-  { value: "openrouter", label: "OpenRouter (кредиты Replit)" },
+  { value: "openrouter", label: "OpenRouter" },
+  { value: "groq", label: "Groq (бесплатные модели)" },
   { value: "openai", label: "OpenAI" },
   { value: "anthropic", label: "Anthropic (Claude)" },
   { value: "google", label: "Google (Gemini)" },
@@ -43,11 +45,15 @@ const PROVIDER_OPTIONS = [
 ];
 
 function needsApiKey(provider: string): boolean {
-  return provider === "anthropic" || provider === "google" || provider === "xai" || provider === "custom";
+  return provider === "openrouter" || provider === "groq" || provider === "anthropic" || provider === "google" || provider === "xai" || provider === "custom";
 }
 
 function needsBaseUrl(provider: string): boolean {
   return provider === "ollama" || provider === "custom";
+}
+
+function isOptionalApiKey(provider: string): boolean {
+  return provider === "openrouter" || provider === "groq";
 }
 
 export default function Settings() {
@@ -93,8 +99,12 @@ export default function Settings() {
         displayName,
         isActive,
       };
-      if (needsApiKey(provider) && apiKey) {
-        body.apiKey = apiKey;
+      if (needsApiKey(provider)) {
+        if (apiKey) {
+          body.apiKey = apiKey;
+        } else if (!editId) {
+          body.apiKey = null;
+        }
       }
       if (needsBaseUrl(provider) && baseUrl) {
         body.baseUrl = baseUrl;
@@ -233,7 +243,7 @@ export default function Settings() {
             title="Помощь: Настройки"
             sections={[
               { title: "Что это?", content: "Центральный раздел для настройки всех интеграций: AI модели (LLM провайдеры), Meta API ключи, Firecrawl, и ваша тема/ниша для генерации контента." },
-              { title: "LLM Провайдеры", content: "AI модели для генерации контента. Добавьте API ключ любого провайдера:\n— OpenRouter (бесплатные модели)\n— OpenAI (GPT-4, GPT-3.5)\n— Anthropic (Claude)\n— Google (Gemini)\n— xAI (Grok)\n— Ollama (локальные модели)\n\nВыберите модель по умолчанию, нажав звёздочку." },
+              { title: "LLM Провайдеры", content: "AI модели для генерации контента. Добавьте API ключ любого провайдера:\n— OpenRouter (свой ключ или системный)\n— Groq (бесплатные модели, сверхбыстрый инференс)\n— OpenAI (GPT)\n— Anthropic (Claude)\n— Google (Gemini)\n— xAI (Grok)\n— Ollama (локальные модели)\n\nOpenRouter и Groq: можно без ключа (системный лимит) или со своим (без ограничений).\nВыберите модель по умолчанию, нажав звёздочку." },
               { title: "Meta API", content: "Введите App ID и App Secret из вашего приложения на developers.facebook.com. Без них невозможна публикация в Threads." },
               { title: "Firecrawl", content: "Опциональный сервис для улучшенного извлечения тредов по URL в разделе «Исследование». Без него используется бесплатный метод извлечения." },
               { title: "Тема/Ниша", content: "Задайте свою основную тему или нишу. Она будет автоматически добавляться во все запросы генерации AI — в генераторе, авто-постинге и переработке." },
@@ -271,7 +281,10 @@ export default function Settings() {
                     </SelectContent>
                   </Select>
                   {provider === "openrouter" && (
-                    <p className="text-xs text-muted-foreground">Использует кредиты Replit, API ключ не требуется</p>
+                    <p className="text-xs text-muted-foreground">Свой ключ OpenRouter или системный (без ключа). Получите на openrouter.ai</p>
+                  )}
+                  {provider === "groq" && (
+                    <p className="text-xs text-muted-foreground">Бесплатные LLM модели на сверхбыстром железе Groq. Ключ с console.groq.com</p>
                   )}
                 </div>
 
@@ -351,14 +364,19 @@ export default function Settings() {
 
                 {needsApiKey(provider) && (
                   <div className="space-y-2">
-                    <Label>API Ключ</Label>
+                    <Label>API Ключ {isOptionalApiKey(provider) && <span className="text-muted-foreground font-normal">(свой ключ)</span>}</Label>
                     <Input
                       type="password"
-                      placeholder="Введите API ключ..."
+                      placeholder={isOptionalApiKey(provider) ? "Свой ключ для безлимитного использования..." : "Введите API ключ..."}
                       value={apiKey}
                       onChange={(e) => setApiKey(e.target.value)}
                       data-testid="input-api-key"
                     />
+                    {isOptionalApiKey(provider) && (
+                      <p className="text-xs text-muted-foreground">
+                        {provider === "openrouter" ? "Без ключа — системный лимит. Со своим — без ограничений." : "Без ключа — системный лимит. Со своим — без ограничений."}
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -373,7 +391,7 @@ export default function Settings() {
                 <Button
                   className="w-full"
                   onClick={() => createMutation.mutate()}
-                  disabled={!provider || !modelId || !displayName || createMutation.isPending}
+                  disabled={!provider || !modelId || !displayName || createMutation.isPending || (needsApiKey(provider) && !isOptionalApiKey(provider) && !apiKey)}
                   data-testid="button-submit-provider"
                 >
                   {createMutation.isPending ? "Сохранение..." : (editId ? "Обновить" : "Добавить")}
@@ -383,9 +401,9 @@ export default function Settings() {
           </Dialog>
         </div>
 
-        {settings && settings.filter(s => s.provider !== "firecrawl").length > 0 ? (
+        {settings && settings.filter(s => s.provider !== "firecrawl" && s.provider !== "user_niche").length > 0 ? (
           <div className="space-y-3">
-            {settings.filter(s => s.provider !== "firecrawl").map((setting) => (
+            {settings.filter(s => s.provider !== "firecrawl" && s.provider !== "user_niche").map((setting) => (
               <Card key={setting.id} className="overflow-visible" data-testid={`card-llm-setting-${setting.id}`}>
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between gap-4 flex-wrap">

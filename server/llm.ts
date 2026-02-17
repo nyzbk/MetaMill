@@ -2,8 +2,13 @@ import OpenAI from "openai";
 import type { LlmSetting } from "@shared/schema";
 
 const openrouterClient = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENROUTER_BASE_URL,
+  apiKey: process.env.OPENROUTER_API_KEY || process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY,
+  baseURL: process.env.AI_INTEGRATIONS_OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
+});
+
+const groqClient = new OpenAI({
+  apiKey: process.env.GROQ_API_KEY,
+  baseURL: "https://api.groq.com/openai/v1",
 });
 
 const openaiClient = new OpenAI({
@@ -26,6 +31,12 @@ export const AVAILABLE_MODELS = [
   { provider: "openrouter", modelId: "x-ai/grok-4.1-fast", displayName: "Grok 4.1 Fast" },
   { provider: "openrouter", modelId: "z-ai/glm-4.7", displayName: "GLM 4.7" },
   { provider: "openrouter", modelId: "google/gemini-2.5-flash-preview-09-2025", displayName: "Gemini 2.5 Flash" },
+  { provider: "groq", modelId: "meta-llama/llama-4-scout-17b-16e-instruct", displayName: "Llama 4 Scout (Groq)" },
+  { provider: "groq", modelId: "meta-llama/llama-3.3-70b-versatile", displayName: "Llama 3.3 70B (Groq)" },
+  { provider: "groq", modelId: "qwen/qwen3-32b", displayName: "Qwen 3 32B (Groq)" },
+  { provider: "groq", modelId: "moonshotai/kimi-k2-instruct", displayName: "Kimi K2 (Groq)" },
+  { provider: "groq", modelId: "openai/gpt-oss-120b", displayName: "GPT OSS 120B (Groq)" },
+  { provider: "groq", modelId: "openai/gpt-oss-20b", displayName: "GPT OSS 20B (Groq)" },
   { provider: "openai", modelId: "gpt-5-mini", displayName: "GPT-5 Mini" },
   { provider: "anthropic", modelId: "claude-sonnet-4-20250514", displayName: "Claude Sonnet 4" },
   { provider: "google", modelId: "gemini-2.5-pro", displayName: "Gemini 2.5 Pro" },
@@ -47,7 +58,21 @@ function getClientForProvider(setting: LlmSettingLike): OpenAI {
 
   switch (provider) {
     case "openrouter":
+      if (apiKey) {
+        return new OpenAI({
+          apiKey,
+          baseURL: "https://openrouter.ai/api/v1",
+        });
+      }
       return openrouterClient;
+    case "groq":
+      if (apiKey) {
+        return new OpenAI({
+          apiKey,
+          baseURL: "https://api.groq.com/openai/v1",
+        });
+      }
+      return groqClient;
     case "openai":
       if (apiKey) {
         return new OpenAI({ apiKey });
@@ -105,7 +130,7 @@ export async function generateWithLlm(
     max_tokens: options.maxTokens || 8192,
   };
 
-  if (options.jsonMode && setting.provider !== "anthropic" && setting.provider !== "ollama") {
+  if (options.jsonMode && setting.provider !== "anthropic" && setting.provider !== "ollama" && setting.provider !== "groq") {
     createOptions.response_format = { type: "json_object" };
   }
 
