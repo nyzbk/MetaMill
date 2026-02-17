@@ -166,6 +166,33 @@ export async function getThreadsProfile(accessToken: string, userId: string): Pr
   };
 }
 
+export async function fetchThreadInsights(
+  accessToken: string,
+  mediaId: string
+): Promise<{ likes: number; replies: number; reposts: number; quotes: number; views: number }> {
+  const metrics = "likes,replies,reposts,quotes,views";
+  try {
+    const res = await fetch(
+      `${THREADS_API_URL}/${mediaId}/insights?metric=${metrics}&access_token=${accessToken}`
+    );
+    const data = await safeFetchJson(res, "Получение метрик");
+    if (data.error || !data.data) {
+      return { likes: 0, replies: 0, reposts: 0, quotes: 0, views: 0 };
+    }
+    const result: Record<string, number> = { likes: 0, replies: 0, reposts: 0, quotes: 0, views: 0 };
+    for (const item of data.data) {
+      const name = item.name as string;
+      if (name in result) {
+        result[name] = item.values?.[0]?.value ?? 0;
+      }
+    }
+    return result as { likes: number; replies: number; reposts: number; quotes: number; views: number };
+  } catch (err: any) {
+    console.warn(`[threads-api] Failed to fetch insights for ${mediaId}:`, err.message);
+    return { likes: 0, replies: 0, reposts: 0, quotes: 0, views: 0 };
+  }
+}
+
 export async function publishThreadChain(
   accessToken: string,
   userId: string,

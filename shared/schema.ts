@@ -61,6 +61,12 @@ export const posts = pgTable("posts", {
   status: text("status").notNull().default("draft"),
   publishedAt: timestamp("published_at"),
   scheduledAt: timestamp("scheduled_at"),
+  likes: integer("likes").default(0),
+  replies: integer("replies").default(0),
+  reposts: integer("reposts").default(0),
+  quotes: integer("quotes").default(0),
+  views: integer("views").default(0),
+  engagementUpdatedAt: timestamp("engagement_updated_at"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 

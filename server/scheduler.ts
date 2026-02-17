@@ -1,6 +1,7 @@
 import { storage } from "./storage";
 import { generateWithLlm } from "./llm";
-import { publishThreadChain } from "./threads-api";
+import { publishThreadChain, fetchThreadInsights } from "./threads-api";
+import { notifyPublishSuccess, notifyPublishFailed } from "./notifications";
 import { db } from "./db";
 import { llmSettings } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
@@ -122,9 +123,36 @@ async function executeJob(job: ScheduledJob) {
 
     if (errors.length > 0) {
       console.warn(`[scheduler] Job ${job.id}: ${errors.length} publish error(s)`);
+      if (job.userId) notifyPublishFailed(job.userId, errors.join("; "), account.username);
     }
 
-    console.log(`[scheduler] Job ${job.id}: published ${mediaIds.filter(Boolean).length}/${branches.length} posts`);
+    const successCount = mediaIds.filter(Boolean).length;
+    console.log(`[scheduler] Job ${job.id}: published ${successCount}/${branches.length} posts`);
+    if (job.userId && successCount > 0) {
+      notifyPublishSuccess(job.userId, successCount, account.username);
+      setTimeout(async () => {
+        try {
+          for (let i = 0; i < mediaIds.length; i++) {
+            if (!mediaIds[i]) continue;
+            const metrics = await fetchThreadInsights(account.accessToken!, mediaIds[i]);
+            const allPosts = await storage.getPosts(job.userId!);
+            const post = allPosts.find(p => p.threadsMediaId === mediaIds[i]);
+            if (post) {
+              await storage.updatePost(post.id, {
+                likes: metrics.likes,
+                replies: metrics.replies,
+                reposts: metrics.reposts,
+                quotes: metrics.quotes,
+                views: metrics.views,
+                engagementUpdatedAt: new Date(),
+              }, job.userId!);
+            }
+          }
+        } catch (err: any) {
+          console.warn(`[scheduler] Engagement fetch after publish failed:`, err.message);
+        }
+      }, 30000);
+    }
   } else {
     for (let i = 0; i < branches.length; i++) {
       await storage.createPost({

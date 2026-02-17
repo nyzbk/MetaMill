@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { useAuth } from "@/hooks/use-auth";
+import { useNotifications } from "@/hooks/use-notifications";
 import { Loader2 } from "lucide-react";
 import Dashboard from "@/pages/dashboard";
 import Accounts from "@/pages/accounts";
@@ -50,6 +51,7 @@ const sidebarStyle = {
 };
 
 function AuthenticatedApp() {
+  useNotifications();
   return (
     <SidebarProvider style={sidebarStyle as React.CSSProperties}>
       <div className="flex h-screen w-full">

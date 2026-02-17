@@ -3,7 +3,8 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertAccountSchema, insertTemplateSchema, insertPostSchema, insertScheduledJobSchema, insertLlmSettingSchema, insertKeywordMonitorSchema, llmSettings, keywordMonitors, monitorResults } from "@shared/schema";
 import { generateWithLlm, AVAILABLE_MODELS } from "./llm";
-import { getThreadsAuthUrl, exchangeCodeForToken, exchangeForLongLivedToken, getThreadsProfile, publishThreadChain } from "./threads-api";
+import { getThreadsAuthUrl, exchangeCodeForToken, exchangeForLongLivedToken, getThreadsProfile, publishThreadChain, fetchThreadInsights } from "./threads-api";
+import { addSSEClient, notifyPublishSuccess, notifyPublishFailed, notifyEngagementUpdate } from "./notifications";
 import { getSchedulerStatus } from "./scheduler";
 import { searchThreadsByKeyword, getUserThreads, lookupThreadsUser, sortByEngagement, filterViralThreads, importThreadAsTemplate, importMultipleAsTemplate } from "./threads-scraper";
 import { getTrends, refreshTrends } from "./trends";
@@ -689,6 +690,13 @@ Write in Russian language.`;
         createdPosts.push(post);
       }
 
+      if (mediaIds.length > 0) {
+        notifyPublishSuccess(userId, mediaIds.length, account.username);
+      }
+      if (errors.length > 0) {
+        notifyPublishFailed(userId, errors.join("; "), account.username);
+      }
+
       res.json({
         posts: createdPosts,
         published: mediaIds.length,
@@ -697,6 +705,8 @@ Write in Russian language.`;
       });
     } catch (error: any) {
       console.error("Publish error:", error);
+      const userId = getUserId(req);
+      notifyPublishFailed(userId, error.message || "Publishing failed", "");
       res.status(500).json({ message: error.message || "Publishing failed" });
     }
   });
@@ -1159,6 +1169,10 @@ Write in Russian language.`;
           totalPosts: accPosts.length,
           published: accPosts.filter(p => p.status === "published").length,
           failed: accPosts.filter(p => p.status === "failed").length,
+          likes: accPosts.reduce((s, p) => s + (p.likes || 0), 0),
+          replies: accPosts.reduce((s, p) => s + (p.replies || 0), 0),
+          reposts: accPosts.reduce((s, p) => s + (p.reposts || 0), 0),
+          views: accPosts.reduce((s, p) => s + (p.views || 0), 0),
         };
       });
 
@@ -1178,6 +1192,11 @@ Write in Russian language.`;
         return new Date(p.publishedAt) >= weekAgo;
       }).length;
 
+      const totalLikes = allPosts.reduce((s, p) => s + (p.likes || 0), 0);
+      const totalReplies = allPosts.reduce((s, p) => s + (p.replies || 0), 0);
+      const totalReposts = allPosts.reduce((s, p) => s + (p.reposts || 0), 0);
+      const totalViews = allPosts.reduce((s, p) => s + (p.views || 0), 0);
+
       res.json({
         overview: {
           totalPosts: allPosts.length,
@@ -1192,6 +1211,10 @@ Write in Russian language.`;
           completedJobs,
           failedJobs,
           successRate: allPosts.length > 0 ? Math.round((published.length / allPosts.length) * 100) : 0,
+          totalLikes,
+          totalReplies,
+          totalReposts,
+          totalViews,
         },
         daily: last7days,
         monthly: last30days,
@@ -1202,8 +1225,103 @@ Write in Russian language.`;
           status: p.status,
           publishedAt: p.publishedAt,
           accountId: p.accountId,
+          likes: p.likes || 0,
+          replies: p.replies || 0,
+          reposts: p.reposts || 0,
+          views: p.views || 0,
         })),
       });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/notifications/stream", isAuthenticated, (req, res) => {
+    const userId = getUserId(req);
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    res.write("data: {\"type\":\"connected\"}\n\n");
+    addSSEClient(userId, res);
+  });
+
+  app.post("/api/engagement/refresh", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const allPosts = await storage.getPosts(userId);
+      const publishedPosts = allPosts.filter(p => p.status === "published" && p.threadsMediaId);
+
+      if (publishedPosts.length === 0) {
+        return res.json({ updated: 0, message: "Нет опубликованных постов с Media ID" });
+      }
+
+      const accountsMap = new Map<number, any>();
+      const userAccounts = await storage.getAccounts(userId);
+      for (const acc of userAccounts) {
+        accountsMap.set(acc.id, acc);
+      }
+
+      let updated = 0;
+      for (const post of publishedPosts.slice(0, 50)) {
+        const account = post.accountId ? accountsMap.get(post.accountId) : null;
+        if (!account?.accessToken || !post.threadsMediaId) continue;
+
+        const metrics = await fetchThreadInsights(account.accessToken, post.threadsMediaId);
+        await storage.updatePost(post.id, {
+          likes: metrics.likes,
+          replies: metrics.replies,
+          reposts: metrics.reposts,
+          quotes: metrics.quotes,
+          views: metrics.views,
+          engagementUpdatedAt: new Date(),
+        }, userId);
+        updated++;
+        notifyEngagementUpdate(userId, post.id, metrics);
+
+        await new Promise(r => setTimeout(r, 200));
+      }
+
+      res.json({ updated, message: `Обновлено метрик: ${updated} постов` });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/analytics/export", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const allPosts = await storage.getPosts(userId);
+      const allAccounts = await storage.getAccounts(userId);
+
+      const accountNames = new Map<number, string>();
+      for (const acc of allAccounts) {
+        accountNames.set(acc.id, acc.username);
+      }
+
+      const statusLabels: Record<string, string> = {
+        published: "Опубликован",
+        draft: "Черновик",
+        scheduled: "Запланирован",
+        failed: "Ошибка",
+      };
+
+      const header = "ID,Аккаунт,Статус,Контент,Лайки,Ответы,Репосты,Цитаты,Просмотры,Опубликовано,Создано\n";
+      const rows = allPosts.map(p => {
+        const accountName = p.accountId ? (accountNames.get(p.accountId) || `#${p.accountId}`) : "";
+        const status = statusLabels[p.status] || p.status;
+        const content = `"${p.content.replace(/"/g, '""').replace(/\n/g, " ").substring(0, 200)}"`;
+        const published = p.publishedAt ? new Date(p.publishedAt).toISOString() : "";
+        const created = p.createdAt ? new Date(p.createdAt).toISOString() : "";
+        return `${p.id},${accountName},${status},${content},${p.likes || 0},${p.replies || 0},${p.reposts || 0},${p.quotes || 0},${p.views || 0},${published},${created}`;
+      }).join("\n");
+
+      const bom = "\uFEFF";
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="metamill-analytics-${new Date().toISOString().split("T")[0]}.csv"`);
+      res.send(bom + header + rows);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
