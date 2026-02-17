@@ -128,14 +128,33 @@ export default function Generator() {
   const publishMutation = useMutation({
     mutationFn: async () => {
       if (!generated || !accountId) throw new Error("Выберите аккаунт");
-      await apiRequest("POST", "/api/publish", {
+      const res = await apiRequest("POST", "/api/publish", {
         accountId: parseInt(accountId),
         branches: generated.branches,
       });
+      return await res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
-      toast({ title: "Тред опубликован" });
+      const total = generated?.branches.length || 0;
+      const published = data.published || 0;
+      const failed = data.failed || 0;
+
+      if (failed === 0) {
+        toast({ title: `Тред опубликован (${published}/${total} веток)` });
+      } else if (published > 0) {
+        toast({
+          title: `Частичная публикация: ${published}/${total} веток`,
+          description: data.errors?.join("\n") || `${failed} веток не удалось опубликовать`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Публикация не удалась",
+          description: data.errors?.join("\n") || "Ни одна ветка не была опубликована",
+          variant: "destructive",
+        });
+      }
     },
     onError: (e: Error) => {
       toast({ title: "Ошибка публикации", description: e.message, variant: "destructive" });

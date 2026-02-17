@@ -193,6 +193,162 @@ export async function fetchThreadInsights(
   }
 }
 
+async function waitForContainerReady(
+  containerId: string,
+  accessToken: string,
+  maxAttempts: number = 10
+): Promise<{ ready: boolean; status: string; error?: string }> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const res = await fetch(
+        `${THREADS_API_URL}/${containerId}?fields=status,error_message&access_token=${accessToken}`
+      );
+      const data = await safeFetchJson(res, `Проверка статуса контейнера ${containerId}`);
+
+      if (data.error) {
+        return { ready: false, status: "ERROR", error: data.error.message || data.error };
+      }
+
+      const status = data.status || "UNKNOWN";
+      console.log(`[threads-api] Container ${containerId} status: ${status} (attempt ${attempt + 1}/${maxAttempts})`);
+
+      if (status === "FINISHED") {
+        return { ready: true, status };
+      }
+
+      if (status === "ERROR" || status === "EXPIRED") {
+        return { ready: false, status, error: data.error_message || `Контейнер в статусе ${status}` };
+      }
+
+      await new Promise((r) => setTimeout(r, 2000));
+    } catch (err: any) {
+      console.warn(`[threads-api] Status check failed for ${containerId}:`, err.message);
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
+
+  return { ready: false, status: "TIMEOUT", error: "Контейнер не готов после ожидания" };
+}
+
+async function createContainer(
+  accessToken: string,
+  text: string,
+  replyToId: string | undefined,
+  postIndex: number,
+  maxRetries: number = 2
+): Promise<{ containerId: string | null; error: string | null }> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const createBody: Record<string, string> = {
+        text,
+        media_type: "TEXT",
+        access_token: accessToken,
+      };
+      if (replyToId) {
+        createBody.reply_to_id = replyToId;
+      }
+
+      const createRes = await fetch(`${THREADS_API_URL}/me/threads`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(createBody),
+      });
+      const createData = await safeFetchJson(createRes, `Создание поста ${postIndex + 1}`);
+
+      if (createData.error) {
+        const msg = createData.error.message || createData.error;
+        if (attempt < maxRetries) {
+          console.warn(`[threads-api] Post ${postIndex + 1} create failed (attempt ${attempt + 1}), retrying: ${msg}`);
+          await new Promise((r) => setTimeout(r, 3000));
+          continue;
+        }
+        return { containerId: null, error: `Создание: ${msg}` };
+      }
+
+      if (!createData.id) {
+        if (attempt < maxRetries) {
+          console.warn(`[threads-api] Post ${postIndex + 1} no container ID (attempt ${attempt + 1}), retrying`);
+          await new Promise((r) => setTimeout(r, 3000));
+          continue;
+        }
+        return { containerId: null, error: "API не вернул ID контейнера" };
+      }
+
+      return { containerId: createData.id, error: null };
+    } catch (err: any) {
+      if (attempt < maxRetries) {
+        console.warn(`[threads-api] Post ${postIndex + 1} create exception (attempt ${attempt + 1}): ${err.message}`);
+        await new Promise((r) => setTimeout(r, 3000));
+        continue;
+      }
+      return { containerId: null, error: err.message };
+    }
+  }
+  return { containerId: null, error: "Неизвестная ошибка при создании" };
+}
+
+async function publishContainer(
+  accessToken: string,
+  containerId: string,
+  postIndex: number,
+  maxRetries: number = 2
+): Promise<{ mediaId: string | null; error: string | null }> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const publishRes = await fetch(`${THREADS_API_URL}/me/threads_publish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          creation_id: containerId,
+          access_token: accessToken,
+        }),
+      });
+      const publishData = await safeFetchJson(publishRes, `Публикация поста ${postIndex + 1}`);
+
+      if (publishData.error) {
+        const msg = publishData.error.message || publishData.error;
+        if (attempt < maxRetries) {
+          console.warn(`[threads-api] Post ${postIndex + 1} publish failed (attempt ${attempt + 1}), retrying: ${msg}`);
+          await new Promise((r) => setTimeout(r, 3000));
+          continue;
+        }
+        return { mediaId: null, error: `Публикация: ${msg}` };
+      }
+
+      const mediaId = publishData.id || containerId;
+      console.log(`[threads-api] Post ${postIndex + 1} published successfully: ${mediaId}`);
+      return { mediaId, error: null };
+    } catch (err: any) {
+      if (attempt < maxRetries) {
+        console.warn(`[threads-api] Post ${postIndex + 1} publish exception (attempt ${attempt + 1}): ${err.message}`);
+        await new Promise((r) => setTimeout(r, 3000));
+        continue;
+      }
+      return { mediaId: null, error: err.message };
+    }
+  }
+  return { mediaId: null, error: "Неизвестная ошибка при публикации" };
+}
+
+async function publishSinglePost(
+  accessToken: string,
+  text: string,
+  replyToId: string | undefined,
+  postIndex: number
+): Promise<{ mediaId: string | null; error: string | null }> {
+  const { containerId, error: createError } = await createContainer(accessToken, text, replyToId, postIndex);
+  if (!containerId) {
+    return { mediaId: null, error: createError };
+  }
+
+  const containerStatus = await waitForContainerReady(containerId, accessToken);
+  if (!containerStatus.ready) {
+    return { mediaId: null, error: `Контейнер не готов: ${containerStatus.error}` };
+  }
+
+  return await publishContainer(accessToken, containerId, postIndex);
+}
+
 export async function publishThreadChain(
   accessToken: string,
   userId: string,
@@ -203,60 +359,27 @@ export async function publishThreadChain(
   let previousMediaId: string | undefined;
 
   for (let i = 0; i < posts.length; i++) {
-    try {
-      const createBody: Record<string, string> = {
-        text: posts[i],
-        media_type: "TEXT",
-        access_token: accessToken,
-      };
+    const result = await publishSinglePost(accessToken, posts[i], previousMediaId, i);
 
-      if (previousMediaId) {
-        createBody.reply_to_id = previousMediaId;
+    if (result.mediaId) {
+      mediaIds.push(result.mediaId);
+      previousMediaId = result.mediaId;
+    } else {
+      const errorMsg = `Пост ${i + 1}/${posts.length}: ${result.error}`;
+      errors.push(errorMsg);
+      console.error(`[threads-api] ${errorMsg}`);
+
+      if (i === 0) {
+        errors.push("Публикация остановлена: первый пост цепочки не удалось опубликовать");
+        break;
       }
+    }
 
-      const createRes = await fetch(`${THREADS_API_URL}/me/threads`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(createBody),
-      });
-      const createData = await safeFetchJson(createRes, `Создание поста ${i + 1}`);
-
-      if (createData.error) {
-        errors.push(`Пост ${i + 1}: ${createData.error.message || createData.error}`);
-        continue;
-      }
-
-      if (!createData.id) {
-        errors.push(`Пост ${i + 1}: API не вернул ID контейнера`);
-        continue;
-      }
-
-      const publishRes = await fetch(`${THREADS_API_URL}/me/threads_publish`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          creation_id: createData.id,
-          access_token: accessToken,
-        }),
-      });
-      const publishData = await safeFetchJson(publishRes, `Публикация поста ${i + 1}`);
-
-      if (publishData.error) {
-        errors.push(`Пост ${i + 1}: ${publishData.error.message || publishData.error}`);
-        continue;
-      }
-
-      const mediaId = publishData.id || createData.id;
-      mediaIds.push(mediaId);
-      previousMediaId = mediaId;
-
-      if (i < posts.length - 1) {
-        await new Promise((r) => setTimeout(r, 1500));
-      }
-    } catch (err: any) {
-      errors.push(`Пост ${i + 1}: ${err.message}`);
+    if (i < posts.length - 1) {
+      await new Promise((r) => setTimeout(r, 2000));
     }
   }
 
+  console.log(`[threads-api] Chain result: ${mediaIds.length} published, ${errors.length} errors`);
   return { mediaIds, errors };
 }

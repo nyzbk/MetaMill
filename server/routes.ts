@@ -690,17 +690,22 @@ Write in Russian language.`;
         createdPosts.push(post);
       }
 
-      if (mediaIds.length > 0) {
+      const totalBranches = branches.length;
+      const failedCount = totalBranches - mediaIds.length;
+
+      if (mediaIds.length > 0 && failedCount === 0) {
         notifyPublishSuccess(userId, mediaIds.length, account.username);
-      }
-      if (errors.length > 0) {
-        notifyPublishFailed(userId, errors.join("; "), account.username);
+      } else if (mediaIds.length > 0 && failedCount > 0) {
+        notifyPublishFailed(userId, `Частично: ${mediaIds.length}/${totalBranches} веток. ${errors.join("; ")}`, account.username);
+      } else {
+        notifyPublishFailed(userId, errors.join("; ") || "Все ветки не удалось опубликовать", account.username);
       }
 
       res.json({
         posts: createdPosts,
         published: mediaIds.length,
-        failed: errors.length,
+        total: totalBranches,
+        failed: failedCount,
         errors: errors.length > 0 ? errors : undefined,
       });
     } catch (error: any) {
