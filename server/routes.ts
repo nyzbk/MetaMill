@@ -414,6 +414,12 @@ h1{color:#9b59b6}h2{color:#b07ed8;margin-top:28px}a{color:#9b59b6}</style></head
         const defaultSetting = await storage.getDefaultLlmSetting(userId);
         if (defaultSetting) {
           llmSetting = defaultSetting;
+        } else {
+          const allSettings = await storage.getLlmSettings(userId);
+          const firstActive = allSettings.find(s => s.isActive && s.provider !== "firecrawl" && s.provider !== "user_niche");
+          if (firstActive) {
+            llmSetting = firstActive;
+          }
         }
       }
 
@@ -1052,7 +1058,13 @@ Write in Russian language.`;
         llmSetting = { provider, modelId, apiKey: match?.apiKey || null, baseUrl: match?.baseUrl || null };
       } else {
         const defaultSetting = await storage.getDefaultLlmSetting(userId);
-        if (defaultSetting) llmSetting = defaultSetting;
+        if (defaultSetting) {
+          llmSetting = defaultSetting;
+        } else {
+          const allSettings = await storage.getLlmSettings(userId);
+          const firstActive = allSettings.find(s => s.isActive && s.provider !== "firecrawl" && s.provider !== "user_niche");
+          if (firstActive) llmSetting = firstActive;
+        }
       }
 
       if (!llmSetting) {

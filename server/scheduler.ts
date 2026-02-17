@@ -211,6 +211,12 @@ async function generateContent(job: ScheduledJob, branchCount: number): Promise<
     const defaultSetting = await storage.getDefaultLlmSetting(job.userId || "");
     if (defaultSetting) {
       llmSetting = defaultSetting;
+    } else {
+      const allSettings = await storage.getLlmSettings(job.userId || "");
+      const firstActive = allSettings.find(s => s.isActive && s.provider !== "firecrawl" && s.provider !== "user_niche");
+      if (firstActive) {
+        llmSetting = firstActive;
+      }
     }
   }
 
