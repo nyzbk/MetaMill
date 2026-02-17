@@ -118,13 +118,13 @@ export default function Trends() {
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <Button
-                      size="icon"
-                      variant="ghost"
+                      size="sm"
+                      variant="outline"
                       onClick={() => useInGenerator(item.title)}
-                      title="Использовать в генераторе"
                       data-testid={`button-use-trend-${item.id}`}
                     >
-                      <Sparkles className="w-4 h-4" />
+                      <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                      Создать тред
                     </Button>
                     {item.url && (
                       <a href={item.url} target="_blank" rel="noopener noreferrer">

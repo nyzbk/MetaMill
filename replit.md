@@ -51,6 +51,10 @@ MetaMill is an industrial AI-powered content automation platform for Threads.net
 14. Global user niche/topic — stored in llm_settings (provider="user_niche"), auto-injected into all AI prompts (generator, scheduler, repurpose)
 15. Starter template presets — 5 pre-built Russian templates (expert analysis, storytelling, top-list, myth-busting, step-by-step guide)
 16. In-app help system — HelpButton component with "?" icon on all 12 pages, detailed Russian instructions
+17. Automation-first template creation — tabbed dialog with 4 methods: "Из трендов" (auto-generate from trends), "Из URL" (extract & import), "Стартовые пресеты", "Вручную"
+18. Generator quick import — 3 quick-action buttons: "Из трендов", "Из мониторинга", "Случайная из ниши" + template-based style reference dropdown
+19. One-click schedule — "Запланировать" button in generator saves template + creates scheduled job automatically
+20. Direct generation from trends/monitoring — "Создать тред" buttons on trend cards and monitoring results redirect to generator with topic pre-filled
 
 ## Auth Routes (Replit Auth)
 - GET `/api/login` - Begin OIDC login flow

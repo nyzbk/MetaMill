@@ -8,10 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Sparkles, Send, Copy, Check, Loader2, Zap, FileText } from "lucide-react";
-import type { Account, LlmSetting } from "@shared/schema";
+import { Sparkles, Send, Copy, Check, Loader2, Zap, FileText, TrendingUp, Radar, Shuffle, CalendarPlus, ChevronDown, ChevronUp } from "lucide-react";
+import type { Account, LlmSetting, Template, TrendItem, KeywordMonitor } from "@shared/schema";
 import { HelpButton } from "@/components/help-button";
 
 interface GeneratedThread {
@@ -22,6 +23,7 @@ export default function Generator() {
   const { toast } = useToast();
   const [topic, setTopic] = useState("");
   const [reference, setReference] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
 
   useEffect(() => {
     const saved = sessionStorage.getItem("generator_topic");
@@ -37,6 +39,9 @@ export default function Generator() {
   const [selectedModel, setSelectedModel] = useState("");
   const [generated, setGenerated] = useState<GeneratedThread | null>(null);
   const [copied, setCopied] = useState<number | null>(null);
+  const [showTrendsDialog, setShowTrendsDialog] = useState(false);
+  const [showMonitorDialog, setShowMonitorDialog] = useState(false);
+  const [showQuickActions, setShowQuickActions] = useState(true);
 
   const { data: accounts } = useQuery<Account[]>({
     queryKey: ["/api/accounts"],
@@ -45,6 +50,42 @@ export default function Generator() {
   const { data: llmSettings } = useQuery<LlmSetting[]>({
     queryKey: ["/api/llm-settings"],
   });
+
+  const { data: templates } = useQuery<Template[]>({
+    queryKey: ["/api/templates"],
+  });
+
+  const { data: trends } = useQuery<TrendItem[]>({
+    queryKey: ["/api/trends"],
+  });
+
+  const { data: monitors } = useQuery<KeywordMonitor[]>({
+    queryKey: ["/api/keyword-monitors"],
+  });
+
+  const { data: nicheData } = useQuery<{ niche: string }>({
+    queryKey: ["/api/user-niche"],
+  });
+
+  const activeTemplates = templates?.filter(t => {
+    try { const p = JSON.parse(t.content); return Array.isArray(p) && p.length > 0 && p[0]; } catch { return false; }
+  }) || [];
+
+  useEffect(() => {
+    if (selectedTemplateId && selectedTemplateId !== "none") {
+      const tmpl = activeTemplates.find(t => String(t.id) === selectedTemplateId);
+      if (tmpl) {
+        try {
+          const parsed = JSON.parse(tmpl.content);
+          if (Array.isArray(parsed)) {
+            setReference(parsed.join("\n\n"));
+          }
+        } catch {}
+      }
+    } else if (selectedTemplateId === "none") {
+      setReference("");
+    }
+  }, [selectedTemplateId]);
 
   const generateMutation = useMutation({
     mutationFn: async () => {
@@ -62,6 +103,9 @@ export default function Generator() {
           body.modelId = setting.modelId;
         }
       }
+      if (selectedTemplateId && selectedTemplateId !== "none") {
+        body.templateId = parseInt(selectedTemplateId);
+      }
       const res = await apiRequest("POST", "/api/generate", body);
       return await res.json();
     },
@@ -76,7 +120,7 @@ export default function Generator() {
 
   const publishMutation = useMutation({
     mutationFn: async () => {
-      if (!generated || !accountId) return;
+      if (!generated || !accountId) throw new Error("Выберите аккаунт");
       await apiRequest("POST", "/api/publish", {
         accountId: parseInt(accountId),
         branches: generated.branches,
@@ -109,10 +153,75 @@ export default function Generator() {
     },
   });
 
+  const scheduleMutation = useMutation({
+    mutationFn: async () => {
+      if (!generated || !accountId) throw new Error("Выберите аккаунт и сгенерируйте тред");
+      const tmplRes = await apiRequest("POST", "/api/templates", {
+        title: topic || "Запланированный тред",
+        description: `Авто-планирование, стиль: ${style}`,
+        branches: generated.branches.length,
+        content: JSON.stringify(generated.branches),
+        style,
+        status: "active",
+      });
+      const tmpl = await tmplRes.json();
+      await apiRequest("POST", "/api/scheduled-jobs", {
+        accountId: parseInt(accountId),
+        templateId: tmpl.id,
+        topic: topic || "Запланированный тред",
+        branches: generated.branches.length,
+        style,
+        scheduledAt: new Date(Date.now() + 3600000).toISOString(),
+        status: "pending",
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scheduled-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/templates"] });
+      toast({ title: "Добавлено в планировщик", description: "Тред сохранён и запланирован на публикацию через 1 час" });
+    },
+    onError: (e: Error) => {
+      toast({ title: "Ошибка планирования", description: e.message, variant: "destructive" });
+    },
+  });
+
+  const randomNicheMutation = useMutation({
+    mutationFn: async () => {
+      const niche = nicheData?.niche || "технологии";
+      const res = await apiRequest("POST", "/api/generate", {
+        topic: `Придумай интересную и актуальную тему для треда в нише "${niche}". Верни ТОЛЬКО название темы, одно предложение, без кавычек.`,
+        branches: 1,
+        style: "casual",
+      });
+      return await res.json();
+    },
+    onSuccess: (data) => {
+      if (data.branches && data.branches[0]) {
+        setTopic(data.branches[0]);
+        toast({ title: "Тема сгенерирована из ниши" });
+      }
+    },
+    onError: (e: Error) => {
+      toast({ title: "Ошибка", description: e.message, variant: "destructive" });
+    },
+  });
+
   const copyBranch = (idx: number, text: string) => {
     navigator.clipboard.writeText(text);
     setCopied(idx);
     setTimeout(() => setCopied(null), 2000);
+  };
+
+  const insertTrendTopic = (title: string) => {
+    setTopic(title);
+    setShowTrendsDialog(false);
+    toast({ title: "Тема вставлена из трендов" });
+  };
+
+  const insertMonitorTopic = (keyword: string) => {
+    setTopic(`Тренды и обсуждения по теме: ${keyword}`);
+    setShowMonitorDialog(false);
+    toast({ title: "Тема вставлена из мониторинга" });
   };
 
   return (
@@ -124,24 +233,68 @@ export default function Generator() {
             title="Помощь: AI Генератор"
             sections={[
               { title: "Что это?", content: "Инструмент для создания тредов с помощью AI. Вы задаёте тему, выбираете стиль и количество веток — AI создаёт готовый тред для публикации." },
-              { title: "Как пользоваться?", content: "1. Введите тему/запрос в поле «Тема треда»\n2. Выберите количество веток (частей треда)\n3. Выберите стиль (casual, professional и т.д.)\n4. Опционально: выберите шаблон как образец стиля\n5. Нажмите «Генерировать»\n6. Результат можно скопировать, сохранить или сразу опубликовать" },
-              { title: "Настройка AI модели", content: "По умолчанию используется бесплатная модель. Для лучшего качества:\n1. Зайдите в «Настройки» → «LLM Провайдеры»\n2. Добавьте свой API ключ (OpenAI, Claude, Gemini и др.)\n3. Выберите нужную модель при генерации" },
-              { title: "Тема/Ниша", content: "Если вы задали тему/нишу в «Настройках», она автоматически добавляется к каждому запросу генерации. Это помогает AI оставаться в контексте вашей ниши." },
+              { title: "Быстрый импорт темы", content: "Используйте кнопки быстрого импорта:\n\n— «Из трендов» — выберите актуальную тему из агрегатора\n— «Из мониторинга» — используйте ключевые слова из мониторинга\n— «Случайная из ниши» — AI сгенерирует тему на основе вашей ниши\n\nЭти кнопки автоматически заполняют поле темы." },
+              { title: "Референс стиля", content: "Выберите шаблон из списка — его содержимое будет использовано как образец стиля для генерации. AI скопирует тон и структуру шаблона." },
+              { title: "Генерация + Планирование", content: "После генерации используйте кнопку «Запланировать» чтобы сразу добавить тред в автопостинг. Выберите аккаунт и нажмите кнопку." },
             ]}
           />
         </div>
         <p className="text-sm text-muted-foreground mt-1">Генерация цепочек тредов с помощью ИИ</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[380px,1fr] gap-6">
-        <div className="space-y-5">
+      <div className="grid grid-cols-1 lg:grid-cols-[400px,1fr] gap-6">
+        <div className="space-y-4">
+          <Card className="overflow-visible">
+            <CardContent className="p-5 space-y-4">
+              <button
+                className="flex items-center justify-between w-full text-left"
+                onClick={() => setShowQuickActions(!showQuickActions)}
+                data-testid="button-toggle-quick-actions"
+              >
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-[hsl(263,70%,50%)]" />
+                  <span className="text-sm font-semibold">Быстрый импорт темы</span>
+                </div>
+                {showQuickActions ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+              </button>
+
+              {showQuickActions && (
+                <div className="grid grid-cols-3 gap-2">
+                  <Button
+                    variant="outline"
+                    className="h-auto py-3 flex flex-col items-center gap-1.5"
+                    onClick={() => setShowTrendsDialog(true)}
+                    data-testid="button-import-from-trends"
+                  >
+                    <TrendingUp className="w-4 h-4" />
+                    <span className="text-[11px]">Из трендов</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="h-auto py-3 flex flex-col items-center gap-1.5"
+                    onClick={() => setShowMonitorDialog(true)}
+                    data-testid="button-import-from-monitor"
+                  >
+                    <Radar className="w-4 h-4" />
+                    <span className="text-[11px]">Мониторинг</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="h-auto py-3 flex flex-col items-center gap-1.5"
+                    onClick={() => randomNicheMutation.mutate()}
+                    disabled={randomNicheMutation.isPending}
+                    data-testid="button-random-niche"
+                  >
+                    {randomNicheMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shuffle className="w-4 h-4" />}
+                    <span className="text-[11px]">Из ниши</span>
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card className="overflow-visible">
             <CardContent className="p-5 space-y-5">
-              <div className="flex items-center gap-2 mb-1">
-                <Zap className="w-4 h-4 text-[hsl(263,70%,50%)]" />
-                <span className="text-sm font-semibold">Настройки</span>
-              </div>
-
               <div className="space-y-2">
                 <Label>Тема / Исходный материал</Label>
                 <Textarea
@@ -155,15 +308,35 @@ export default function Generator() {
               </div>
 
               <div className="space-y-2">
+                <Label>Референс стиля из шаблона</Label>
+                <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
+                  <SelectTrigger data-testid="select-reference-template">
+                    <SelectValue placeholder="Выберите шаблон..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Без референса</SelectItem>
+                    {activeTemplates.map((t) => (
+                      <SelectItem key={t.id} value={String(t.id)}>
+                        {t.title} ({t.style})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedTemplateId && selectedTemplateId !== "none" && (
+                  <p className="text-xs text-muted-foreground">AI скопирует стиль и тон выбранного шаблона</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
                 <div className="flex justify-between">
-                  <Label>Референс стиля (опционально)</Label>
+                  <Label>Ручной референс (опционально)</Label>
                 </div>
                 <Textarea
-                  placeholder="Вставьте референс треда для копирования стиля..."
+                  placeholder="Или вставьте свой текст-образец..."
                   className="resize-none text-sm"
-                  rows={3}
+                  rows={2}
                   value={reference}
-                  onChange={(e) => setReference(e.target.value)}
+                  onChange={(e) => { setReference(e.target.value); setSelectedTemplateId("none"); }}
                   data-testid="textarea-reference"
                 />
               </div>
@@ -184,19 +357,38 @@ export default function Generator() {
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <Label>Длина треда</Label>
-                  <span className="text-sm font-mono text-muted-foreground">{branches}</span>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <Label>Длина</Label>
+                    <span className="text-sm font-mono text-muted-foreground">{branches}</span>
+                  </div>
+                  <Slider
+                    value={[branches]}
+                    onValueChange={([v]) => setBranches(v)}
+                    min={1}
+                    max={10}
+                    step={1}
+                    data-testid="slider-thread-length"
+                  />
                 </div>
-                <Slider
-                  value={[branches]}
-                  onValueChange={([v]) => setBranches(v)}
-                  min={1}
-                  max={10}
-                  step={1}
-                  data-testid="slider-thread-length"
-                />
+                <div className="space-y-2">
+                  <Label>LLM</Label>
+                  <Select value={selectedModel} onValueChange={setSelectedModel}>
+                    <SelectTrigger data-testid="select-llm-model">
+                      <SelectValue placeholder="По умолч." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">Llama 3.3 70B</SelectItem>
+                      {llmSettings?.filter(s => s.isActive && s.provider !== "firecrawl" && s.provider !== "user_niche").map((s) => (
+                        <SelectItem key={s.id} value={`${s.provider}:${s.modelId}`}>
+                          {s.displayName}
+                          {s.isDefault ? " ★" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -207,24 +399,6 @@ export default function Generator() {
                   onChange={(e) => setDirectives(e.target.value)}
                   data-testid="input-directives"
                 />
-              </div>
-
-              <div className="space-y-2">
-                <Label>LLM Модель</Label>
-                <Select value={selectedModel} onValueChange={setSelectedModel}>
-                  <SelectTrigger data-testid="select-llm-model">
-                    <SelectValue placeholder="По умолчанию" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default">Llama 3.3 70B (по умолчанию)</SelectItem>
-                    {llmSettings?.filter(s => s.isActive && s.provider !== "firecrawl").map((s) => (
-                      <SelectItem key={s.id} value={`${s.provider}:${s.modelId}`}>
-                        {s.displayName}
-                        {s.isDefault ? " ★" : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
 
               <Button
@@ -259,13 +433,13 @@ export default function Generator() {
                   </Badge>
                   <span className="text-sm text-muted-foreground">{generated.branches.length} веток</span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <Button variant="outline" size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} data-testid="button-save-template">
                     <FileText className="w-4 h-4 mr-2" />
-                    Сохранить шаблон
+                    Шаблон
                   </Button>
                   <Select value={accountId} onValueChange={setAccountId}>
-                    <SelectTrigger className="w-[160px]" data-testid="select-publish-account">
+                    <SelectTrigger className="w-[140px]" data-testid="select-publish-account">
                       <SelectValue placeholder="Аккаунт..." />
                     </SelectTrigger>
                     <SelectContent>
@@ -281,7 +455,17 @@ export default function Generator() {
                     data-testid="button-publish"
                   >
                     <Send className="w-4 h-4 mr-2" />
-                    Опубликовать
+                    Публиковать
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => scheduleMutation.mutate()}
+                    disabled={!accountId || scheduleMutation.isPending}
+                    data-testid="button-schedule"
+                  >
+                    <CalendarPlus className="w-4 h-4 mr-2" />
+                    Запланировать
                   </Button>
                 </div>
               </div>
@@ -330,13 +514,71 @@ export default function Generator() {
                 </div>
                 <h3 className="font-semibold mb-1">Готово к генерации</h3>
                 <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                  Заполните тему и настройки, затем нажмите Сгенерировать для создания цепочки тредов
+                  Используйте кнопки быстрого импорта или введите тему вручную, затем нажмите Сгенерировать
                 </p>
               </CardContent>
             </Card>
           )}
         </div>
       </div>
+
+      <Dialog open={showTrendsDialog} onOpenChange={setShowTrendsDialog}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Выберите тему из трендов</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 pt-2">
+            {!trends || trends.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Трендов нет. Обновите тренды в разделе «Тренды».</p>
+            ) : (
+              trends.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between gap-3 p-3 rounded-md border border-border hover-elevate cursor-pointer"
+                  onClick={() => insertTrendTopic(item.title)}
+                  data-testid={`trend-pick-${item.id}`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{item.title}</p>
+                    <Badge variant="secondary" className="mt-1 text-[10px]">{item.source}</Badge>
+                  </div>
+                  <Sparkles className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                </div>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showMonitorDialog} onOpenChange={setShowMonitorDialog}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Выберите тему из мониторинга</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 pt-2">
+            {!monitors || monitors.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Нет мониторингов. Добавьте ключевые слова в разделе «Мониторинг».</p>
+            ) : (
+              monitors.map((m) => (
+                <div
+                  key={m.id}
+                  className="flex items-center justify-between gap-3 p-3 rounded-md border border-border hover-elevate cursor-pointer"
+                  onClick={() => insertMonitorTopic(m.keyword)}
+                  data-testid={`monitor-pick-${m.id}`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">{m.keyword}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Последняя проверка: {m.lastCheckedAt ? new Date(m.lastCheckedAt).toLocaleDateString("ru") : "не проводилась"}
+                    </p>
+                  </div>
+                  <Radar className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                </div>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

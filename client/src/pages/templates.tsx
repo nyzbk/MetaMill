@@ -10,12 +10,22 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, FileText, MoreHorizontal, GitBranch, Trash2, Sparkles } from "lucide-react";
+import { Plus, FileText, MoreHorizontal, GitBranch, Trash2, Sparkles, TrendingUp, Link2, Pencil, Loader2, Microscope, BookOpen, ListOrdered, Lightbulb, ClipboardList } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import type { Template } from "@shared/schema";
+import type { Template, TrendItem } from "@shared/schema";
 import { HelpButton } from "@/components/help-button";
+
+const PRESET_ICONS = [Microscope, BookOpen, ListOrdered, Lightbulb, ClipboardList] as const;
+const PRESET_CARDS = [
+  { title: "Экспертный разбор", description: "Глубокий анализ темы с инсайтами и фактами. Стиль: educational, 5 веток.", iconIdx: 0 },
+  { title: "История/Кейс", description: "Storytelling-формат с завязкой, кульминацией и выводом. Стиль: storytelling, 5 веток.", iconIdx: 1 },
+  { title: "Топ-лист", description: "Список советов или фактов в формате '5 вещей, которые...'. Стиль: casual, 5 веток.", iconIdx: 2 },
+  { title: "Разрушение мифов", description: "Формат 'миф vs реальность' с доказательствами. Стиль: professional, 4 ветки.", iconIdx: 3 },
+  { title: "Пошаговая инструкция", description: "Практический гайд с конкретными действиями. Стиль: educational, 5 веток.", iconIdx: 4 },
+];
 
 export default function Templates() {
   const { toast } = useToast();
@@ -25,9 +35,15 @@ export default function Templates() {
   const [branches, setBranches] = useState(3);
   const [style, setStyle] = useState("casual");
   const [branchContents, setBranchContents] = useState<string[]>(["", "", ""]);
+  const [importUrl, setImportUrl] = useState("");
+  const [importingTrendId, setImportingTrendId] = useState<number | null>(null);
 
   const { data: templates, isLoading } = useQuery<Template[]>({
     queryKey: ["/api/templates"],
+  });
+
+  const { data: trends, isLoading: trendsLoading } = useQuery<TrendItem[]>({
+    queryKey: ["/api/trends"],
   });
 
   const createMutation = useMutation({
@@ -78,6 +94,51 @@ export default function Templates() {
     },
   });
 
+  const urlImportMutation = useMutation({
+    mutationFn: async (url: string) => {
+      await apiRequest("POST", "/api/research/extract-and-import", { url });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/templates"] });
+      setOpen(false);
+      setImportUrl("");
+      toast({ title: "Шаблон импортирован из URL" });
+    },
+    onError: (e: Error) => {
+      toast({ title: "Ошибка импорта", description: e.message, variant: "destructive" });
+    },
+  });
+
+  const trendImportMutation = useMutation({
+    mutationFn: async (trend: TrendItem) => {
+      setImportingTrendId(trend.id);
+      const res = await apiRequest("POST", "/api/generate", {
+        topic: trend.title,
+        branches: 5,
+        style: "casual",
+      });
+      const data = await res.json();
+      const branchesArr = data.branches || [data];
+      await apiRequest("POST", "/api/templates", {
+        title: trend.title,
+        description: `Сгенерировано из тренда (${trend.source})`,
+        branches: branchesArr.length,
+        style: "casual",
+        content: JSON.stringify(branchesArr),
+        status: "draft",
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/templates"] });
+      setImportingTrendId(null);
+      toast({ title: "Шаблон создан из тренда" });
+    },
+    onError: (e: Error) => {
+      setImportingTrendId(null);
+      toast({ title: "Ошибка генерации", description: e.message, variant: "destructive" });
+    },
+  });
+
   const handleBranchChange = (count: number) => {
     setBranches(count);
     const newContents = [...branchContents];
@@ -114,118 +175,266 @@ export default function Templates() {
           </div>
           <p className="text-sm text-muted-foreground mt-1">Шаблоны цепочек тредов для автоматизации контента</p>
         </div>
-        <div className="flex gap-2 flex-wrap">
-          <Button
-            variant="outline"
-            onClick={() => presetMutation.mutate()}
-            disabled={presetMutation.isPending}
-            data-testid="button-add-presets"
-          >
-            <Sparkles className="w-4 h-4 mr-2" />
-            {presetMutation.isPending ? "Добавление..." : "Стартовые шаблоны"}
-          </Button>
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button data-testid="button-create-template">
-                <Plus className="w-4 h-4 mr-2" />
-                Новый шаблон
-              </Button>
-            </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <Button data-testid="button-create-template">
+              <Plus className="w-4 h-4 mr-2" />
+              Новый шаблон
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Создать шаблон</DialogTitle>
+              <DialogTitle>Новый шаблон</DialogTitle>
             </DialogHeader>
-            <div className="space-y-5 pt-2">
-              <div className="space-y-2">
-                <Label>Название</Label>
-                <Input
-                  placeholder="Название шаблона"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  data-testid="input-template-title"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Описание</Label>
-                <Input
-                  placeholder="Краткое описание"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  data-testid="input-template-description"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Стиль</Label>
-                  <Select value={style} onValueChange={setStyle}>
-                    <SelectTrigger data-testid="select-style">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="casual">Casual</SelectItem>
-                      <SelectItem value="expert">Expert</SelectItem>
-                      <SelectItem value="storytelling">Storytelling</SelectItem>
-                      <SelectItem value="controversial">Controversial</SelectItem>
-                      <SelectItem value="minimalist">Minimalist</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <Label>Ветки</Label>
-                    <span className="text-sm font-mono text-muted-foreground">{branches}</span>
-                  </div>
-                  <Slider
-                    value={[branches]}
-                    onValueChange={([v]) => handleBranchChange(v)}
-                    min={1}
-                    max={10}
-                    step={1}
-                    data-testid="slider-branches"
-                  />
-                </div>
-              </div>
+            <Tabs defaultValue="trends" className="mt-2">
+              <TabsList className="w-full grid grid-cols-4" data-testid="tabs-template-create">
+                <TabsTrigger value="trends" data-testid="tab-trends">
+                  <TrendingUp className="w-4 h-4 mr-1.5" />
+                  Из трендов
+                </TabsTrigger>
+                <TabsTrigger value="url" data-testid="tab-url">
+                  <Link2 className="w-4 h-4 mr-1.5" />
+                  Из URL
+                </TabsTrigger>
+                <TabsTrigger value="presets" data-testid="tab-presets">
+                  <Sparkles className="w-4 h-4 mr-1.5" />
+                  Пресеты
+                </TabsTrigger>
+                <TabsTrigger value="manual" data-testid="tab-manual">
+                  <Pencil className="w-4 h-4 mr-1.5" />
+                  Вручную
+                </TabsTrigger>
+              </TabsList>
 
-              <div className="space-y-3">
-                <Label>Цепочка треда ({branches} веток)</Label>
-                <div className="space-y-3">
-                  {Array.from({ length: branches }).map((_, i) => (
-                    <div key={i} className="flex gap-3">
-                      <div className="flex flex-col items-center gap-1 pt-3">
-                        <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs font-mono text-muted-foreground flex-shrink-0">
-                          {i + 1}
-                        </div>
-                        {i < branches - 1 && <div className="w-[2px] flex-1 bg-border rounded-full min-h-[16px]" />}
+              <TabsContent value="trends" className="max-h-[60vh] overflow-y-auto">
+                <div className="space-y-3 pt-2">
+                  <p className="text-sm text-muted-foreground" data-testid="text-trends-description">
+                    Выберите тренд — AI сгенерирует тред и сохранит как шаблон.
+                  </p>
+                  {trendsLoading ? (
+                    <div className="space-y-3">
+                      {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16" />)}
+                    </div>
+                  ) : trends && trends.length > 0 ? (
+                    <div className="space-y-2">
+                      {trends.slice(0, 15).map((trend) => (
+                        <Card key={trend.id} className="overflow-visible" data-testid={`card-trend-${trend.id}`}>
+                          <CardContent className="p-4 flex items-center justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <h4 className="text-sm font-medium truncate" data-testid={`text-trend-title-${trend.id}`}>
+                                {trend.title}
+                              </h4>
+                              <Badge variant="secondary" className="mt-1" data-testid={`badge-trend-source-${trend.id}`}>
+                                {trend.source}
+                              </Badge>
+                            </div>
+                            <Button
+                              variant="outline"
+                              disabled={importingTrendId === trend.id || trendImportMutation.isPending}
+                              onClick={() => trendImportMutation.mutate(trend)}
+                              data-testid={`button-import-trend-${trend.id}`}
+                            >
+                              {importingTrendId === trend.id ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                  Генерация...
+                                </>
+                              ) : (
+                                "Импортировать"
+                              )}
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <TrendingUp className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                      <p className="text-sm">Тренды не найдены. Обновите тренды на странице «Тренды».</p>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="url" className="max-h-[60vh] overflow-y-auto">
+                <div className="space-y-4 pt-2">
+                  <p className="text-sm text-muted-foreground" data-testid="text-url-description">
+                    Вставьте ссылку на тред из Threads — контент будет извлечён и сохранён как шаблон.
+                  </p>
+                  <div className="space-y-2">
+                    <Label>URL треда</Label>
+                    <Input
+                      placeholder="https://www.threads.net/@user/post/..."
+                      value={importUrl}
+                      onChange={(e) => setImportUrl(e.target.value)}
+                      data-testid="input-import-url"
+                    />
+                  </div>
+                  <Button
+                    className="w-full"
+                    onClick={() => urlImportMutation.mutate(importUrl)}
+                    disabled={!importUrl.trim() || urlImportMutation.isPending}
+                    data-testid="button-extract-url"
+                  >
+                    {urlImportMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Извлечение...
+                      </>
+                    ) : (
+                      <>
+                        <Link2 className="w-4 h-4 mr-2" />
+                        Извлечь и создать
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="presets" className="max-h-[60vh] overflow-y-auto">
+                <div className="space-y-4 pt-2">
+                  <p className="text-sm text-muted-foreground" data-testid="text-presets-description">
+                    Готовые шаблоны для быстрого старта. Добавьте все сразу одной кнопкой.
+                  </p>
+                  <Button
+                    className="w-full"
+                    onClick={() => presetMutation.mutate()}
+                    disabled={presetMutation.isPending}
+                    data-testid="button-add-presets"
+                  >
+                    {presetMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Добавление...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 mr-2" />
+                        Добавить все 5 шаблонов
+                      </>
+                    )}
+                  </Button>
+                  <div className="space-y-2">
+                    {PRESET_CARDS.map((preset, idx) => {
+                      const Icon = PRESET_ICONS[preset.iconIdx];
+                      return (
+                        <Card key={idx} className="overflow-visible" data-testid={`card-preset-${idx}`}>
+                          <CardContent className="p-4 flex items-start gap-3">
+                            <div className="w-8 h-8 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
+                              <Icon className="w-4 h-4 text-muted-foreground" />
+                            </div>
+                            <div>
+                              <h4 className="text-sm font-medium" data-testid={`text-preset-title-${idx}`}>{preset.title}</h4>
+                              <p className="text-xs text-muted-foreground mt-1" data-testid={`text-preset-desc-${idx}`}>{preset.description}</p>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="manual" className="max-h-[60vh] overflow-y-auto">
+                <div className="space-y-5 pt-2">
+                  <div className="space-y-2">
+                    <Label>Название</Label>
+                    <Input
+                      placeholder="Название шаблона"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      data-testid="input-template-title"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Описание</Label>
+                    <Input
+                      placeholder="Краткое описание"
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      data-testid="input-template-description"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Стиль</Label>
+                      <Select value={style} onValueChange={setStyle}>
+                        <SelectTrigger data-testid="select-style">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="casual">Casual</SelectItem>
+                          <SelectItem value="expert">Expert</SelectItem>
+                          <SelectItem value="storytelling">Storytelling</SelectItem>
+                          <SelectItem value="controversial">Controversial</SelectItem>
+                          <SelectItem value="minimalist">Minimalist</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <Label>Ветки</Label>
+                        <span className="text-sm font-mono text-muted-foreground">{branches}</span>
                       </div>
-                      <Textarea
-                        placeholder={`Ветка ${i + 1}...`}
-                        className="resize-none text-sm"
-                        rows={3}
-                        value={branchContents[i] || ""}
-                        onChange={(e) => {
-                          const newContents = [...branchContents];
-                          newContents[i] = e.target.value;
-                          setBranchContents(newContents);
-                        }}
-                        data-testid={`textarea-branch-${i}`}
+                      <Slider
+                        value={[branches]}
+                        onValueChange={([v]) => handleBranchChange(v)}
+                        min={1}
+                        max={10}
+                        step={1}
+                        data-testid="slider-branches"
                       />
                     </div>
-                  ))}
-                </div>
-              </div>
+                  </div>
 
-              <Button
-                className="w-full"
-                onClick={() => createMutation.mutate()}
-                disabled={!title || createMutation.isPending}
-                data-testid="button-submit-template"
-              >
-                {createMutation.isPending ? "Создание..." : "Создать шаблон"}
-              </Button>
-            </div>
+                  <div className="space-y-3">
+                    <Label>Цепочка треда ({branches} веток)</Label>
+                    <div className="space-y-3">
+                      {Array.from({ length: branches }).map((_, i) => (
+                        <div key={i} className="flex gap-3">
+                          <div className="flex flex-col items-center gap-1 pt-3">
+                            <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs font-mono text-muted-foreground flex-shrink-0">
+                              {i + 1}
+                            </div>
+                            {i < branches - 1 && <div className="w-[2px] flex-1 bg-border rounded-full min-h-[16px]" />}
+                          </div>
+                          <Textarea
+                            placeholder={`Ветка ${i + 1}...`}
+                            className="resize-none text-sm"
+                            rows={3}
+                            value={branchContents[i] || ""}
+                            onChange={(e) => {
+                              const newContents = [...branchContents];
+                              newContents[i] = e.target.value;
+                              setBranchContents(newContents);
+                            }}
+                            data-testid={`textarea-branch-${i}`}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <Button
+                    className="w-full"
+                    onClick={() => createMutation.mutate()}
+                    disabled={!title || createMutation.isPending}
+                    data-testid="button-submit-template"
+                  >
+                    {createMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Создание...
+                      </>
+                    ) : (
+                      "Создать шаблон"
+                    )}
+                  </Button>
+                </div>
+              </TabsContent>
+            </Tabs>
           </DialogContent>
-          </Dialog>
-        </div>
+        </Dialog>
       </div>
 
       {templates && templates.length > 0 ? (

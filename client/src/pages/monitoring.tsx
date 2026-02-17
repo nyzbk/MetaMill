@@ -9,12 +9,14 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Radar, Plus, Trash2, RefreshCw, Loader2, Eye, Heart } from "lucide-react";
+import { Radar, Plus, Trash2, RefreshCw, Loader2, Eye, Heart, Sparkles } from "lucide-react";
+import { useLocation } from "wouter";
 import type { KeywordMonitor, MonitorResult } from "@shared/schema";
 import { HelpButton } from "@/components/help-button";
 
 export default function Monitoring() {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [open, setOpen] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [selectedMonitor, setSelectedMonitor] = useState<number | null>(null);
@@ -156,6 +158,15 @@ export default function Monitoring() {
                       <Button
                         size="icon"
                         variant="ghost"
+                        onClick={(e) => { e.stopPropagation(); sessionStorage.setItem("generator_topic", `Тренды и обсуждения по теме: ${m.keyword}`); setLocation("/generator"); }}
+                        title="Создать тред"
+                        data-testid={`button-generate-from-monitor-${m.id}`}
+                      >
+                        <Sparkles className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
                         onClick={(e) => { e.stopPropagation(); checkMutation.mutate(m.id); }}
                         disabled={checkMutation.isPending}
                         data-testid={`button-check-${m.id}`}
@@ -213,6 +224,15 @@ export default function Monitoring() {
                             <span>{new Date(r.fetchedAt).toLocaleDateString("ru-RU")}</span>
                           </div>
                         </div>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => { sessionStorage.setItem("generator_topic", r.threadText.substring(0, 300)); setLocation("/generator"); }}
+                          title="Создать тред по теме"
+                          data-testid={`button-generate-from-result-${r.id}`}
+                        >
+                          <Sparkles className="w-4 h-4" />
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>
