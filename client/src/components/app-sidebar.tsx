@@ -29,6 +29,7 @@ import {
   Radar,
   BookOpen,
   Link2,
+  BarChart3,
 } from "lucide-react";
 
 const mainItems = [
@@ -37,6 +38,7 @@ const mainItems = [
   { title: "Шаблоны", url: "/templates", icon: FileText },
   { title: "AI Генератор", url: "/generator", icon: Sparkles },
   { title: "Авто-постинг", url: "/scheduler", icon: CalendarClock },
+  { title: "Аналитика", url: "/analytics", icon: BarChart3 },
 ];
 
 const toolItems = [

@@ -19,6 +19,7 @@ import Trends from "@/pages/trends";
 import Monitoring from "@/pages/monitoring";
 import MetaWizard from "@/pages/meta-wizard";
 import Repurpose from "@/pages/repurpose";
+import Analytics from "@/pages/analytics";
 import Landing from "@/pages/landing";
 import NotFound from "@/pages/not-found";
 
@@ -35,6 +36,7 @@ function Router() {
       <Route path="/monitoring" component={Monitoring} />
       <Route path="/meta-wizard" component={MetaWizard} />
       <Route path="/repurpose" component={Repurpose} />
+      <Route path="/analytics" component={Analytics} />
       <Route path="/test" component={ThreadTest} />
       <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />

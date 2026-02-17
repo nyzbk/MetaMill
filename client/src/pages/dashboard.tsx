@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   FileText,
@@ -10,7 +11,12 @@ import {
   TrendingUp,
   Clock,
   Sparkles,
+  CheckCircle,
+  XCircle,
+  BarChart3,
+  ArrowRight,
 } from "lucide-react";
+import { useLocation } from "wouter";
 import type { Post, Account, Template, ScheduledJob } from "@shared/schema";
 import { HelpButton } from "@/components/help-button";
 
@@ -69,7 +75,58 @@ function RecentPostItem({ post }: { post: Post }) {
   );
 }
 
+function PublicationStatus({ posts }: { posts: Post[] }) {
+  const recent = posts
+    .filter(p => p.status === "published" || p.status === "failed" || p.status === "scheduled")
+    .sort((a, b) => {
+      const dateA = a.publishedAt || a.createdAt;
+      const dateB = b.publishedAt || b.createdAt;
+      if (!dateA || !dateB) return 0;
+      return new Date(dateB).getTime() - new Date(dateA).getTime();
+    })
+    .slice(0, 5);
+
+  if (recent.length === 0) return null;
+
+  const statusConfig: Record<string, { icon: typeof CheckCircle; color: string; label: string }> = {
+    published: { icon: CheckCircle, color: "text-emerald-400", label: "Опубликован" },
+    failed: { icon: XCircle, color: "text-red-400", label: "Ошибка" },
+    scheduled: { icon: Clock, color: "text-amber-400", label: "Запланирован" },
+    draft: { icon: FileText, color: "text-muted-foreground", label: "Черновик" },
+  };
+
+  return (
+    <Card className="overflow-visible">
+      <CardContent className="p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <Send className="w-4 h-4 text-muted-foreground" />
+          <h3 className="font-semibold text-sm">Статус публикаций</h3>
+        </div>
+        <div className="space-y-3">
+          {recent.map((post) => {
+            const cfg = statusConfig[post.status] || statusConfig.published;
+            const StatusIcon = cfg.icon;
+            const timeStr = post.publishedAt
+              ? new Date(post.publishedAt).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })
+              : "";
+            return (
+              <div key={post.id} className="flex items-center gap-3" data-testid={`status-post-${post.id}`}>
+                <StatusIcon className={`w-4 h-4 flex-shrink-0 ${cfg.color}`} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm truncate">{post.content.substring(0, 50)}{post.content.length > 50 ? "..." : ""}</p>
+                </div>
+                <span className="text-xs text-muted-foreground flex-shrink-0">{timeStr}</span>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Dashboard() {
+  const [, setLocation] = useLocation();
   const { data: accounts, isLoading: loadingAccounts } = useQuery<Account[]>({
     queryKey: ["/api/accounts"],
   });
@@ -134,6 +191,8 @@ export default function Dashboard() {
         <StatCard label="Аккаунты" value={activeAccounts} icon={Users} />
       </div>
 
+      {posts && posts.length > 0 && <PublicationStatus posts={posts} />}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="overflow-visible">
           <CardContent className="p-5">
@@ -191,6 +250,17 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      <Button
+        variant="outline"
+        className="w-full"
+        onClick={() => setLocation("/analytics")}
+        data-testid="button-goto-analytics"
+      >
+        <BarChart3 className="w-4 h-4 mr-2" />
+        Открыть аналитику
+        <ArrowRight className="w-4 h-4 ml-2" />
+      </Button>
     </div>
   );
 }

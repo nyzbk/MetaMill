@@ -11,7 +11,8 @@ import { Slider } from "@/components/ui/slider";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Sparkles, Send, Copy, Check, Loader2, Zap, FileText, TrendingUp, Radar, Shuffle, CalendarPlus, ChevronDown, ChevronUp } from "lucide-react";
+import { Sparkles, Send, Copy, Check, Loader2, Zap, FileText, TrendingUp, Radar, Shuffle, CalendarPlus, ChevronDown, ChevronUp, Clock } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { Account, LlmSetting, Template, TrendItem, KeywordMonitor } from "@shared/schema";
 import { HelpButton } from "@/components/help-button";
 
@@ -42,6 +43,12 @@ export default function Generator() {
   const [showTrendsDialog, setShowTrendsDialog] = useState(false);
   const [showMonitorDialog, setShowMonitorDialog] = useState(false);
   const [showQuickActions, setShowQuickActions] = useState(true);
+  const [showScheduleForm, setShowScheduleForm] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState(() => {
+    const d = new Date(Date.now() + 3600000);
+    return d.toISOString().slice(0, 16);
+  });
+  const [scheduleRecurrence, setScheduleRecurrence] = useState("once");
 
   const { data: accounts } = useQuery<Account[]>({
     queryKey: ["/api/accounts"],
@@ -165,20 +172,32 @@ export default function Generator() {
         status: "active",
       });
       const tmpl = await tmplRes.json();
+      const parsedDate = scheduleDate ? new Date(scheduleDate) : new Date(Date.now() + 3600000);
+      if (isNaN(parsedDate.getTime())) throw new Error("Некорректная дата");
+      const scheduledTime = parsedDate.toISOString();
+      const isRec = scheduleRecurrence !== "once";
+      let cron: string | null = null;
+      if (scheduleRecurrence === "daily") cron = "0 */24 * * *";
+      if (scheduleRecurrence === "weekly") cron = "0 0 * * 1";
       await apiRequest("POST", "/api/scheduled-jobs", {
         accountId: parseInt(accountId),
         templateId: tmpl.id,
         topic: topic || "Запланированный тред",
         branches: generated.branches.length,
         style,
-        scheduledAt: new Date(Date.now() + 3600000).toISOString(),
-        status: "pending",
+        scheduledAt: scheduledTime,
+        nextRunAt: scheduledTime,
+        status: isRec ? "recurring" : "pending",
+        isRecurring: isRec,
+        cronExpression: cron,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/scheduled-jobs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/templates"] });
-      toast({ title: "Добавлено в планировщик", description: "Тред сохранён и запланирован на публикацию через 1 час" });
+      setShowScheduleForm(false);
+      const recLabel = scheduleRecurrence === "once" ? "" : scheduleRecurrence === "daily" ? " (ежедневно)" : " (еженедельно)";
+      toast({ title: "Добавлено в планировщик", description: `Тред запланирован на ${new Date(scheduleDate).toLocaleString("ru-RU")}${recLabel}` });
     },
     onError: (e: Error) => {
       toast({ title: "Ошибка планирования", description: e.message, variant: "destructive" });
@@ -457,16 +476,64 @@ export default function Generator() {
                     <Send className="w-4 h-4 mr-2" />
                     Публиковать
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => scheduleMutation.mutate()}
-                    disabled={!accountId || scheduleMutation.isPending}
-                    data-testid="button-schedule"
-                  >
-                    <CalendarPlus className="w-4 h-4 mr-2" />
-                    Запланировать
-                  </Button>
+                  <Popover open={showScheduleForm} onOpenChange={setShowScheduleForm}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={!accountId}
+                        data-testid="button-schedule"
+                      >
+                        <CalendarPlus className="w-4 h-4 mr-2" />
+                        Запланировать
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-72 p-4" align="end">
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Clock className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-sm font-semibold">Расписание</span>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Дата и время</Label>
+                          <Input
+                            type="datetime-local"
+                            value={scheduleDate}
+                            onChange={(e) => setScheduleDate(e.target.value)}
+                            className="text-sm"
+                            data-testid="input-schedule-date"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Повторение</Label>
+                          <Select value={scheduleRecurrence} onValueChange={setScheduleRecurrence}>
+                            <SelectTrigger className="text-sm" data-testid="select-schedule-recurrence">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="once">Однократно</SelectItem>
+                              <SelectItem value="daily">Ежедневно</SelectItem>
+                              <SelectItem value="weekly">Еженедельно</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Button
+                          className="w-full"
+                          size="sm"
+                          onClick={() => scheduleMutation.mutate()}
+                          disabled={scheduleMutation.isPending}
+                          data-testid="button-confirm-schedule"
+                        >
+                          {scheduleMutation.isPending ? (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          ) : (
+                            <CalendarPlus className="w-4 h-4 mr-2" />
+                          )}
+                          Подтвердить
+                        </Button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 </div>
               </div>
 

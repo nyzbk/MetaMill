@@ -1059,5 +1059,155 @@ Write in Russian language.`;
     }
   });
 
+  // ── Batch Schedule (from trends) ──
+  app.post("/api/batch-schedule", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const { trends: trendTopics, accountId, style, branches: branchCount, scheduledAt, intervalMinutes, isRecurring, cronExpression } = req.body;
+      if (!trendTopics || !Array.isArray(trendTopics) || trendTopics.length === 0) {
+        return res.status(400).json({ message: "trends array is required" });
+      }
+      if (!accountId) return res.status(400).json({ message: "accountId is required" });
+
+      const account = await storage.getAccount(parseInt(accountId), userId);
+      if (!account) return res.status(404).json({ message: "Account not found" });
+
+      const jobs = [];
+      const baseTime = scheduledAt ? new Date(scheduledAt).getTime() : Date.now() + 3600000;
+      const interval = (intervalMinutes || 60) * 60 * 1000;
+
+      for (let i = 0; i < trendTopics.length; i++) {
+        const topic = trendTopics[i];
+        const jobTime = new Date(baseTime + i * interval);
+
+        const tmpl = await storage.createTemplate({
+          userId,
+          title: topic,
+          description: "Пакетное планирование из трендов",
+          branches: branchCount || 5,
+          content: "[]",
+          style: style || "casual",
+          status: "active",
+        });
+
+        const job = await storage.createScheduledJob({
+          userId,
+          accountId: parseInt(accountId),
+          templateId: tmpl.id,
+          topic,
+          branches: branchCount || 5,
+          style: style || "casual",
+          scheduledAt: jobTime,
+          nextRunAt: jobTime,
+          status: isRecurring ? "recurring" : "pending",
+          isRecurring: isRecurring || false,
+          cronExpression: cronExpression || null,
+        });
+        jobs.push(job);
+      }
+
+      res.json({ created: jobs.length, jobs });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── Analytics ──
+  app.get("/api/analytics", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const allPosts = await storage.getPosts(userId);
+      const allJobs = await storage.getScheduledJobs(userId);
+      const allAccounts = await storage.getAccounts(userId);
+      const allTemplates = await storage.getTemplates(userId);
+
+      const published = allPosts.filter(p => p.status === "published");
+      const failed = allPosts.filter(p => p.status === "failed");
+      const drafts = allPosts.filter(p => p.status === "draft");
+
+      const now = new Date();
+      const last7days: { date: string; count: number }[] = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(d.getDate() - i);
+        const dateStr = d.toISOString().split("T")[0];
+        const count = published.filter(p => {
+          if (!p.publishedAt) return false;
+          return new Date(p.publishedAt).toISOString().split("T")[0] === dateStr;
+        }).length;
+        last7days.push({ date: dateStr, count });
+      }
+
+      const last30days: { date: string; count: number }[] = [];
+      for (let i = 29; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(d.getDate() - i);
+        const dateStr = d.toISOString().split("T")[0];
+        const count = published.filter(p => {
+          if (!p.publishedAt) return false;
+          return new Date(p.publishedAt).toISOString().split("T")[0] === dateStr;
+        }).length;
+        last30days.push({ date: dateStr, count });
+      }
+
+      const accountStats = allAccounts.map(acc => {
+        const accPosts = allPosts.filter(p => p.accountId === acc.id);
+        return {
+          id: acc.id,
+          username: acc.username,
+          platform: acc.platform,
+          totalPosts: accPosts.length,
+          published: accPosts.filter(p => p.status === "published").length,
+          failed: accPosts.filter(p => p.status === "failed").length,
+        };
+      });
+
+      const pendingJobs = allJobs.filter(j => j.status === "pending" || j.status === "recurring").length;
+      const completedJobs = allJobs.filter(j => j.status === "completed").length;
+      const failedJobs = allJobs.filter(j => j.status === "failed").length;
+
+      const publishedToday = published.filter(p => {
+        if (!p.publishedAt) return false;
+        return new Date(p.publishedAt).toDateString() === now.toDateString();
+      }).length;
+
+      const publishedThisWeek = published.filter(p => {
+        if (!p.publishedAt) return false;
+        const weekAgo = new Date(now);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        return new Date(p.publishedAt) >= weekAgo;
+      }).length;
+
+      res.json({
+        overview: {
+          totalPosts: allPosts.length,
+          published: published.length,
+          failed: failed.length,
+          drafts: drafts.length,
+          publishedToday,
+          publishedThisWeek,
+          totalTemplates: allTemplates.length,
+          totalAccounts: allAccounts.length,
+          activeJobs: pendingJobs,
+          completedJobs,
+          failedJobs,
+          successRate: allPosts.length > 0 ? Math.round((published.length / allPosts.length) * 100) : 0,
+        },
+        daily: last7days,
+        monthly: last30days,
+        accountStats,
+        recentPublished: published.slice(0, 10).map(p => ({
+          id: p.id,
+          content: p.content.substring(0, 100),
+          status: p.status,
+          publishedAt: p.publishedAt,
+          accountId: p.accountId,
+        })),
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   return httpServer;
 }

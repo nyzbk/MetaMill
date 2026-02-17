@@ -55,6 +55,10 @@ MetaMill is an industrial AI-powered content automation platform for Threads.net
 18. Generator quick import — 3 quick-action buttons: "Из трендов", "Из мониторинга", "Случайная из ниши" + template-based style reference dropdown
 19. One-click schedule — "Запланировать" button in generator saves template + creates scheduled job automatically
 20. Direct generation from trends/monitoring — "Создать тред" buttons on trend cards and monitoring results redirect to generator with topic pre-filled
+21. Custom schedule form — date/time picker with recurrence options (once/daily/weekly) in generator scheduling popover
+22. Batch trend scheduling — checkbox selection on trends + batch dialog with account/style/interval/recurrence settings
+23. Publication status notifications — dashboard widget showing recent publication results (success/failure) with timestamps
+24. Analytics dashboard — overview stats, 7-day activity bar chart, per-account statistics, recent publications list
 
 ## Auth Routes (Replit Auth)
 - GET `/api/login` - Begin OIDC login flow
@@ -98,6 +102,8 @@ MetaMill is an industrial AI-powered content automation platform for Threads.net
 - GET `/api/user-niche` - Get user's global niche/topic
 - POST `/api/user-niche` - Set user's global niche/topic
 - POST `/api/templates/starter-presets` - Add 5 starter template presets
+- POST `/api/batch-schedule` - Batch schedule multiple trends (creates templates + scheduled jobs with interval)
+- GET `/api/analytics` - Analytics dashboard data (overview stats, daily/monthly charts, account stats, recent publications)
 
 ## Security Notes
 - Multi-user data isolation: all CRUD operations scoped by userId (from req.user.claims.sub)
