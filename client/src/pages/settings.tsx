@@ -11,9 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Star, Trash2, Settings as SettingsIcon, Pencil, MoreHorizontal, Link2, Check, Loader2 } from "lucide-react";
+import { Plus, Star, Trash2, Settings as SettingsIcon, Pencil, MoreHorizontal, Link2, Check, Loader2, Target } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { LlmSetting } from "@shared/schema";
+import { HelpButton } from "@/components/help-button";
 
 interface AvailableModel {
   provider: string;
@@ -61,6 +62,8 @@ export default function Settings() {
   const [isActive, setIsActive] = useState(true);
   const [firecrawlKey, setFirecrawlKey] = useState("");
   const [firecrawlSaved, setFirecrawlSaved] = useState(false);
+  const [nicheValue, setNicheValue] = useState("");
+  const [nicheSaved, setNicheSaved] = useState(false);
 
   const { data: settings, isLoading } = useQuery<LlmSetting[]>({
     queryKey: ["/api/llm-settings"],
@@ -136,6 +139,25 @@ export default function Settings() {
   const firecrawlSetting = settings?.find(s => s.provider === "firecrawl");
   const hasFirecrawl = !!firecrawlSetting;
 
+  const { data: nicheData } = useQuery<{ niche: string }>({
+    queryKey: ["/api/user-niche"],
+  });
+
+  const saveNicheMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", "/api/user-niche", { niche: nicheValue });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/user-niche"] });
+      setNicheSaved(true);
+      toast({ title: "Тема/ниша сохранена" });
+      setTimeout(() => setNicheSaved(false), 2000);
+    },
+    onError: (e: Error) => {
+      toast({ title: "Ошибка", description: e.message, variant: "destructive" });
+    },
+  });
+
   const saveFirecrawlMutation = useMutation({
     mutationFn: async () => {
       if (firecrawlSetting) {
@@ -205,7 +227,19 @@ export default function Settings() {
   return (
     <div className="p-6 space-y-6 max-w-4xl">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Настройки</h1>
+        <div className="flex items-center gap-2 flex-wrap">
+          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Настройки</h1>
+          <HelpButton
+            title="Помощь: Настройки"
+            sections={[
+              { title: "Что это?", content: "Центральный раздел для настройки всех интеграций: AI модели (LLM провайдеры), Meta API ключи, Firecrawl, и ваша тема/ниша для генерации контента." },
+              { title: "LLM Провайдеры", content: "AI модели для генерации контента. Добавьте API ключ любого провайдера:\n— OpenRouter (бесплатные модели)\n— OpenAI (GPT-4, GPT-3.5)\n— Anthropic (Claude)\n— Google (Gemini)\n— xAI (Grok)\n— Ollama (локальные модели)\n\nВыберите модель по умолчанию, нажав звёздочку." },
+              { title: "Meta API", content: "Введите App ID и App Secret из вашего приложения на developers.facebook.com. Без них невозможна публикация в Threads." },
+              { title: "Firecrawl", content: "Опциональный сервис для улучшенного извлечения тредов по URL в разделе «Исследование». Без него используется бесплатный метод извлечения." },
+              { title: "Тема/Ниша", content: "Задайте свою основную тему или нишу. Она будет автоматически добавляться во все запросы генерации AI — в генераторе, авто-постинге и переработке." },
+            ]}
+          />
+        </div>
         <p className="text-sm text-muted-foreground mt-1">Управление LLM провайдерами и конфигурацией</p>
       </div>
 
@@ -497,6 +531,59 @@ export default function Settings() {
               </a>
               . Бесплатный тариф: 500 страниц/мес.
             </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="space-y-4">
+        <h2 className="text-lg font-semibold" data-testid="text-section-niche">Тема / Ниша</h2>
+        <Card className="overflow-visible">
+          <CardContent className="p-5 space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
+                <Target className="w-5 h-5 text-muted-foreground" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium">Глобальная тема контента</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Укажите вашу тему или нишу. Она будет автоматически добавлена во все AI-промпты:
+                  генератор, авто-постинг, переработка контента.
+                </p>
+              </div>
+              {nicheData?.niche && (
+                <Badge variant="secondary" className="bg-[hsl(263,70%,50%)]/15 text-[hsl(263,70%,60%)] flex-shrink-0">
+                  <Check className="w-3 h-3 mr-1" />
+                  Настроена
+                </Badge>
+              )}
+            </div>
+            {nicheData?.niche && (
+              <div className="px-3 py-2 bg-muted/50 rounded-md">
+                <p className="text-xs text-muted-foreground">Текущая ниша:</p>
+                <p className="text-sm font-medium mt-0.5" data-testid="text-current-niche">{nicheData.niche}</p>
+              </div>
+            )}
+            <div className="flex gap-2 flex-wrap">
+              <Input
+                placeholder={nicheData?.niche ? "Введите новую тему для обновления..." : "Например: «криптовалюты и блокчейн», «фитнес и здоровый образ жизни»"}
+                value={nicheValue}
+                onChange={(e) => setNicheValue(e.target.value)}
+                className="flex-1 min-w-[200px]"
+                data-testid="input-niche"
+              />
+              <Button
+                onClick={() => saveNicheMutation.mutate()}
+                disabled={!nicheValue.trim() || saveNicheMutation.isPending}
+                data-testid="button-save-niche"
+              >
+                {saveNicheMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : nicheSaved ? (
+                  <Check className="w-4 h-4 mr-2" />
+                ) : null}
+                {nicheSaved ? "Сохранено" : "Сохранить"}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>

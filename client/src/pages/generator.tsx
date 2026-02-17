@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Sparkles, Send, Copy, Check, Loader2, Zap, FileText } from "lucide-react";
 import type { Account, LlmSetting } from "@shared/schema";
+import { HelpButton } from "@/components/help-button";
 
 interface GeneratedThread {
   branches: string[];
@@ -117,7 +118,18 @@ export default function Generator() {
   return (
     <div className="p-6 max-w-6xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">AI Генератор</h1>
+        <div className="flex items-center gap-2 flex-wrap">
+          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">AI Генератор</h1>
+          <HelpButton
+            title="Помощь: AI Генератор"
+            sections={[
+              { title: "Что это?", content: "Инструмент для создания тредов с помощью AI. Вы задаёте тему, выбираете стиль и количество веток — AI создаёт готовый тред для публикации." },
+              { title: "Как пользоваться?", content: "1. Введите тему/запрос в поле «Тема треда»\n2. Выберите количество веток (частей треда)\n3. Выберите стиль (casual, professional и т.д.)\n4. Опционально: выберите шаблон как образец стиля\n5. Нажмите «Генерировать»\n6. Результат можно скопировать, сохранить или сразу опубликовать" },
+              { title: "Настройка AI модели", content: "По умолчанию используется бесплатная модель. Для лучшего качества:\n1. Зайдите в «Настройки» → «LLM Провайдеры»\n2. Добавьте свой API ключ (OpenAI, Claude, Gemini и др.)\n3. Выберите нужную модель при генерации" },
+              { title: "Тема/Ниша", content: "Если вы задали тему/нишу в «Настройках», она автоматически добавляется к каждому запросу генерации. Это помогает AI оставаться в контексте вашей ниши." },
+            ]}
+          />
+        </div>
         <p className="text-sm text-muted-foreground mt-1">Генерация цепочек тредов с помощью ИИ</p>
       </div>
 

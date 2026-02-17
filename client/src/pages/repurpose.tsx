@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Link2, Loader2, Copy, Check, FileText, Send, Sparkles } from "lucide-react";
 import type { Account, LlmSetting } from "@shared/schema";
+import { HelpButton } from "@/components/help-button";
 
 export default function Repurpose() {
   const { toast } = useToast();
@@ -91,7 +92,18 @@ export default function Repurpose() {
   return (
     <div className="p-6 max-w-6xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Переработка контента</h1>
+        <div className="flex items-center gap-2 flex-wrap">
+          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Переработка контента</h1>
+          <HelpButton
+            title="Помощь: Переработка контента"
+            sections={[
+              { title: "Что это?", content: "Инструмент для превращения статей, постов Reddit, новостей и любых веб-страниц в готовые треды для Threads. AI извлекает контент по ссылке и переписывает его в формат треда." },
+              { title: "Как пользоваться?", content: "1. Вставьте ссылку на статью, пост Reddit или новость\n2. Задайте количество веток треда\n3. Нажмите «Переработать»\n4. AI извлечёт контент и создаст тред\n5. Результат можно скопировать или сохранить" },
+              { title: "Какие ссылки подходят?", content: "— Посты Reddit\n— Статьи из блогов и новостных сайтов\n— Любые публичные веб-страницы с текстовым контентом\n\nНе подходят: страницы за авторизацией, PDF, видео" },
+              { title: "Связь с нишей", content: "Если вы задали тему/нишу в «Настройках», AI адаптирует переработанный контент под вашу нишу." },
+            ]}
+          />
+        </div>
         <p className="text-sm text-muted-foreground mt-1">Превращение статей, постов Reddit и новостей в треды для Threads</p>
       </div>
 

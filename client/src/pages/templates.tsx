@@ -12,9 +12,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, FileText, MoreHorizontal, GitBranch, Trash2 } from "lucide-react";
+import { Plus, FileText, MoreHorizontal, GitBranch, Trash2, Sparkles } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { Template } from "@shared/schema";
+import { HelpButton } from "@/components/help-button";
 
 export default function Templates() {
   const { toast } = useToast();
@@ -64,6 +65,19 @@ export default function Templates() {
     },
   });
 
+  const presetMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", "/api/templates/starter-presets");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/templates"] });
+      toast({ title: "Стартовые шаблоны добавлены", description: "5 шаблонов для разных форматов контента" });
+    },
+    onError: (e: Error) => {
+      toast({ title: "Ошибка", description: e.message, variant: "destructive" });
+    },
+  });
+
   const handleBranchChange = (count: number) => {
     setBranches(count);
     const newContents = [...branchContents];
@@ -86,16 +100,37 @@ export default function Templates() {
     <div className="p-6 space-y-6 max-w-6xl">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Шаблоны</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Шаблоны</h1>
+            <HelpButton
+              title="Помощь: Шаблоны"
+              sections={[
+                { title: "Что это?", content: "Шаблоны — это образцы контента, на основе которых AI генерирует новые треды. Чем больше качественных шаблонов, тем лучше результат генерации." },
+                { title: "Как получить шаблоны?", content: "Есть несколько способов:\n\n1. «Готовые шаблоны» — нажмите кнопку «Добавить стартовые шаблоны» для быстрого старта\n\n2. «Исследование» → вкладка «По URL» — вставьте ссылку на популярный тред из Threads и импортируйте его как шаблон\n\n3. «Переработка» — вставьте ссылку на статью/пост из Reddit/новостей и AI переработает его в тред\n\n4. «Тренды» — найдите актуальную тему и нажмите «Использовать в генераторе»\n\n5. Вручную — нажмите «Создать шаблон» и напишите свой" },
+                { title: "Стили шаблонов", content: "casual — разговорный стиль\nprofessional — деловой стиль\nhumor — с юмором\nstorytelling — история/рассказ\neducational — обучающий\nreference — импортированный образец (используется как пример стиля для AI)" },
+                { title: "Связь с генератором", content: "В AI Генераторе вы можете выбрать шаблон как «образец стиля». AI проанализирует его и создаст новый тред в похожем стиле, но на вашу тему." },
+              ]}
+            />
+          </div>
           <p className="text-sm text-muted-foreground mt-1">Шаблоны цепочек тредов для автоматизации контента</p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-create-template">
-              <Plus className="w-4 h-4 mr-2" />
-              Новый шаблон
-            </Button>
-          </DialogTrigger>
+        <div className="flex gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            onClick={() => presetMutation.mutate()}
+            disabled={presetMutation.isPending}
+            data-testid="button-add-presets"
+          >
+            <Sparkles className="w-4 h-4 mr-2" />
+            {presetMutation.isPending ? "Добавление..." : "Стартовые шаблоны"}
+          </Button>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-create-template">
+                <Plus className="w-4 h-4 mr-2" />
+                Новый шаблон
+              </Button>
+            </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Создать шаблон</DialogTitle>
@@ -189,7 +224,8 @@ export default function Templates() {
               </Button>
             </div>
           </DialogContent>
-        </Dialog>
+          </Dialog>
+        </div>
       </div>
 
       {templates && templates.length > 0 ? (

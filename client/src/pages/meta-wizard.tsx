@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CheckCircle2, Circle, ExternalLink, Copy, Check, BookOpen } from "lucide-react";
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { HelpButton } from "@/components/help-button";
 
 interface MetaConfig {
   hasAppId: boolean;
@@ -185,9 +186,17 @@ export default function MetaWizard() {
   return (
     <div className="p-6 space-y-6 max-w-3xl">
       <div>
-        <div className="flex items-center gap-2 mb-1">
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
           <BookOpen className="w-5 h-5 text-[hsl(263,70%,50%)]" />
           <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Мастер подключения Meta API</h1>
+          <HelpButton
+            title="Помощь: Мастер Meta API"
+            sections={[
+              { title: "Что это?", content: "Пошаговое руководство для настройки подключения к Meta API (Threads). Без этой настройки невозможно публиковать контент и использовать функции поиска." },
+              { title: "Зачем нужен Meta API?", content: "Meta API позволяет:\n— Публиковать треды автоматически\n— Искать треды по ключевым словам\n— Загружать треды пользователей\n— Управлять аккаунтом Threads программно" },
+              { title: "Что нужно сделать?", content: "1. Создайте приложение на developers.facebook.com\n2. Получите App ID и App Secret\n3. Настройте Threads API в приложении\n4. Добавьте redirect URI (указан на этой странице)\n5. Введите App ID и App Secret в «Настройках» MetaMill" },
+            ]}
+          />
         </div>
         <p className="text-sm text-muted-foreground">
           Пошаговая инструкция для подключения Threads API к MetaMill

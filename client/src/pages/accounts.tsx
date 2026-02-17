@@ -15,6 +15,7 @@ import { Plus, MoreHorizontal, Wifi, WifiOff, AtSign, Link2, Shield, ShieldCheck
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useLocation } from "wouter";
 import type { Account } from "@shared/schema";
+import { HelpButton } from "@/components/help-button";
 
 function getTokenStatus(account: Account): { label: string; color: string; icon: typeof ShieldCheck; urgent: boolean } {
   if (!account.accessToken) {
@@ -147,7 +148,18 @@ export default function Accounts() {
     <div className="p-6 space-y-6 max-w-6xl">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Аккаунты</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Аккаунты</h1>
+            <HelpButton
+              title="Помощь: Аккаунты"
+              sections={[
+                { title: "Что это?", content: "Раздел для управления вашими аккаунтами Threads и Instagram. Здесь вы подключаете аккаунты через Meta API для публикации контента." },
+                { title: "Как подключить аккаунт?", content: "1. Сначала настройте Meta API через раздел «Мета API» в боковом меню\n2. Нажмите «Добавить аккаунт» → выберите платформу Threads\n3. Нажмите «Подключить через OAuth» для авторизации\n4. После авторизации аккаунт появится в списке со статусом «Активен»" },
+                { title: "Зачем нужен?", content: "Без подключённого аккаунта невозможно публиковать контент в Threads. Аккаунт хранит токен доступа, который позволяет публиковать от вашего имени." },
+                { title: "Статус токена", content: "Зелёный — токен активен, всё работает\nЖёлтый — токен скоро истечёт, обновите его\nКрасный — токен истёк или отсутствует, нужна повторная авторизация" },
+              ]}
+            />
+          </div>
           <p className="text-sm text-muted-foreground mt-1">Управление подключёнными аккаунтами Threads и Instagram</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">

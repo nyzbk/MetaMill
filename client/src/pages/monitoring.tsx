@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Radar, Plus, Trash2, RefreshCw, Loader2, Eye, Heart } from "lucide-react";
 import type { KeywordMonitor, MonitorResult } from "@shared/schema";
+import { HelpButton } from "@/components/help-button";
 
 export default function Monitoring() {
   const { toast } = useToast();
@@ -85,7 +86,18 @@ export default function Monitoring() {
     <div className="p-6 space-y-6 max-w-5xl">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Мониторинг</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Мониторинг</h1>
+            <HelpButton
+              title="Помощь: Мониторинг"
+              sections={[
+                { title: "Что это?", content: "Отслеживание ключевых слов в Threads. Добавьте слова/фразы, и система будет искать их в публичных тредах, чтобы вы были в курсе обсуждений по вашей теме." },
+                { title: "Как пользоваться?", content: "1. Нажмите «Добавить ключевое слово»\n2. Введите слово или фразу для отслеживания\n3. Нажмите «Проверить» для ручного поиска\n4. Просмотрите найденные результаты" },
+                { title: "Зачем нужен?", content: "Мониторинг помогает:\n— Следить за упоминаниями вашего бренда/продукта\n— Находить обсуждения по вашей нише\n— Быть в курсе конкурентов\n— Находить идеи для контента из реальных обсуждений" },
+                { title: "Требования", content: "Для работы мониторинга нужен подключённый аккаунт Threads с активным токеном (раздел «Аккаунты»), так как поиск использует Threads API." },
+              ]}
+            />
+          </div>
           <p className="text-sm text-muted-foreground mt-1">Отслеживание ключевых слов в Threads</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>

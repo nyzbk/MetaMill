@@ -14,6 +14,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Plus, CalendarClock, Trash2, Clock, Zap, MoreHorizontal, Play, Pause, RotateCcw, AlertCircle } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { ScheduledJob, Account, Template } from "@shared/schema";
+import { HelpButton } from "@/components/help-button";
 
 interface SchedulerStatus {
   running: boolean;
@@ -183,7 +184,18 @@ export default function Scheduler() {
     <div className="p-6 space-y-6 max-w-6xl">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Авто-постинг</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Авто-постинг</h1>
+            <HelpButton
+              title="Помощь: Авто-постинг"
+              sections={[
+                { title: "Что это?", content: "Планировщик автоматической публикации. Создайте задания — система сама сгенерирует контент через AI и опубликует его в Threads по расписанию." },
+                { title: "Как настроить?", content: "1. Нажмите «Создать задание»\n2. Выберите аккаунт для публикации\n3. Задайте тему/промпт для генерации\n4. Выберите дату и время публикации\n5. Включите «Повторяющееся» если хотите регулярные публикации\n6. Система автоматически сгенерирует и опубликует контент" },
+                { title: "Повторяющиеся задания", content: "Включите переключатель «Повторяющееся» и задайте интервал (например, каждые 2 часа). Система будет автоматически генерировать новый контент и публиковать его с заданным интервалом." },
+                { title: "Требования", content: "Для работы авто-постинга необходимо:\n— Подключённый аккаунт Threads (раздел «Аккаунты»)\n— Настроенный LLM провайдер (раздел «Настройки»)\n— Активный токен доступа (не истёкший)" },
+              ]}
+            />
+          </div>
           <p className="text-sm text-muted-foreground mt-1">Планирование и автоматизация публикации контента</p>
         </div>
         <div className="flex items-center gap-3">

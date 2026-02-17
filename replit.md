@@ -48,6 +48,9 @@ MetaMill is an industrial AI-powered content automation platform for Threads.net
 11. Trend aggregator — real-time trends from HackerNews, Reddit, TechCrunch with "Use in Generator" action
 12. Keyword monitoring — track keywords in Threads, manual check triggers, result history
 13. Content repurposing — convert URLs (Reddit, blogs, news) into thread chains via AI
+14. Global user niche/topic — stored in llm_settings (provider="user_niche"), auto-injected into all AI prompts (generator, scheduler, repurpose)
+15. Starter template presets — 5 pre-built Russian templates (expert analysis, storytelling, top-list, myth-busting, step-by-step guide)
+16. In-app help system — HelpButton component with "?" icon on all 12 pages, detailed Russian instructions
 
 ## Auth Routes (Replit Auth)
 - GET `/api/login` - Begin OIDC login flow
@@ -88,6 +91,9 @@ MetaMill is an industrial AI-powered content automation platform for Threads.net
 - POST `/api/research/extract-and-import` - Extract + import as template in one step
 - POST `/api/research/extract-batch` - Batch extract up to 10 URLs
 - POST `/api/repurpose` - Convert URL content to thread chain via AI
+- GET `/api/user-niche` - Get user's global niche/topic
+- POST `/api/user-niche` - Set user's global niche/topic
+- POST `/api/templates/starter-presets` - Add 5 starter template presets
 
 ## Security Notes
 - Multi-user data isolation: all CRUD operations scoped by userId (from req.user.claims.sub)

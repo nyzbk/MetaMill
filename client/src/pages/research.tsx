@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Search, Download, Heart, MessageCircle, Clock, Plus, Sparkles, FileText, Link2, Loader2, ExternalLink, Check } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { HelpButton } from "@/components/help-button";
 
 interface ThreadPost {
   id: string;
@@ -246,7 +247,20 @@ export default function Research() {
     <div className="p-6 space-y-6 max-w-6xl">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Исследование</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Исследование</h1>
+            <HelpButton
+              title="Помощь: Исследование"
+              sections={[
+                { title: "Что это?", content: "Набор инструментов для поиска и импорта контента из Threads: извлечение тредов по URL, поиск по ключевым словам, анализ тредов пользователей." },
+                { title: "По URL (вкладка)", content: "Вставьте ссылку на тред из Threads (threads.com) и извлеките его текст. Работает без API через веб-скрейпинг. Для лучших результатов добавьте Firecrawl API ключ в «Настройках»." },
+                { title: "Пакетное извлечение", content: "Извлечение нескольких тредов за раз (до 10 URL). Вставьте ссылки по одной на строку." },
+                { title: "Поиск (API)", content: "Поиск тредов по ключевым словам через Threads API. Требует подключённый аккаунт с активным токеном." },
+                { title: "Треды пользователя (API)", content: "Загрузка тредов конкретного пользователя по его ID. Требует подключённый аккаунт с активным токеном." },
+                { title: "Зачем нужно?", content: "Импортируйте успешные треды как шаблоны. AI будет использовать их стиль и структуру для генерации нового контента на вашу тему." },
+              ]}
+            />
+          </div>
           <p className="text-sm text-muted-foreground mt-1">Поиск залетевших тредов, извлечение по URL и импорт как шаблонов</p>
         </div>
         <Dialog open={manualOpen} onOpenChange={setManualOpen}>

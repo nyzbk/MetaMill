@@ -8,6 +8,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { TrendingUp, RefreshCw, ExternalLink, Sparkles, Loader2, Flame } from "lucide-react";
 import { useLocation } from "wouter";
 import type { TrendItem } from "@shared/schema";
+import { HelpButton } from "@/components/help-button";
 
 const SOURCE_COLORS: Record<string, string> = {
   HackerNews: "bg-orange-500/15 text-orange-400",
@@ -61,7 +62,17 @@ export default function Trends() {
     <div className="p-6 space-y-6 max-w-4xl">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Тренды</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Тренды</h1>
+            <HelpButton
+              title="Помощь: Тренды"
+              sections={[
+                { title: "Что это?", content: "Агрегатор актуальных тем и новостей из HackerNews, Reddit и TechCrunch. Помогает находить трендовые темы для создания контента." },
+                { title: "Как пользоваться?", content: "1. Нажмите «Обновить» для загрузки свежих трендов\n2. Просмотрите список актуальных тем\n3. Нажмите «Использовать в генераторе» рядом с интересной темой\n4. Вы будете перенаправлены в AI Генератор с этой темой" },
+                { title: "Зачем нужны тренды?", content: "Контент на актуальные темы получает больше охвата и просмотров. Используйте тренды как источник идей для ваших тредов." },
+              ]}
+            />
+          </div>
           <p className="text-sm text-muted-foreground mt-1">Актуальные темы для контента из HackerNews, Reddit и TechCrunch</p>
         </div>
         <Button

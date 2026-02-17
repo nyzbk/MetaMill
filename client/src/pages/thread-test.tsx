@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { FlaskConical, Plus, Trash2, Eye } from "lucide-react";
+import { HelpButton } from "@/components/help-button";
 
 export default function ThreadTest() {
   const [branches, setBranches] = useState<string[]>(["", "", ""]);
@@ -20,7 +21,16 @@ export default function ThreadTest() {
   return (
     <div className="p-6 space-y-6 max-w-4xl">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Тест треда</h1>
+        <div className="flex items-center gap-2 flex-wrap">
+          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Тест треда</h1>
+          <HelpButton
+            title="Помощь: Тест треда"
+            sections={[
+              { title: "Что это?", content: "Инструмент для предпросмотра треда перед публикацией. Вы видите как будет выглядеть ваш тред в Threads." },
+              { title: "Как пользоваться?", content: "1. Введите текст каждой ветки треда в редакторе слева\n2. Справа увидите предпросмотр как это будет выглядеть\n3. Добавляйте/удаляйте ветки по необходимости\n4. Когда тред готов — опубликуйте его через AI Генератор или Авто-постинг" },
+            ]}
+          />
+        </div>
         <p className="text-sm text-muted-foreground mt-1">Предпросмотр вашего треда</p>
       </div>
 

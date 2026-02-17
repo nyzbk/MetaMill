@@ -117,6 +117,7 @@ export async function repurposeToThread(
     apiKey?: string | null;
     baseUrl?: string | null;
     userId: string;
+    userNiche?: string;
   }
 ): Promise<{ title: string; branches: string[]; source: string }> {
   const { title, text, source } = await fetchAndExtractContent(url);
@@ -132,6 +133,7 @@ export async function repurposeToThread(
   const systemPrompt = `You are MetaMill, an AI content repurposing engine.
 Your task: take the source material below and transform it into an engaging Threads thread chain.
 Generate exactly ${branchCount} posts, each under 500 characters.
+${options.userNiche ? `IMPORTANT: The user's niche/topic is: "${options.userNiche}". Adapt the content to be relevant to this niche.` : ""}
 ${options.style ? `Style: ${options.style}` : "Style: casual, engaging"}
 
 Rules:

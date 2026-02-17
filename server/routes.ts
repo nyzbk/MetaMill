@@ -153,6 +153,93 @@ h1{color:#9b59b6}h2{color:#b07ed8;margin-top:28px}a{color:#9b59b6}</style></head
     res.status(204).send();
   });
 
+  app.post("/api/templates/starter-presets", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const presets = [
+      {
+        title: "Экспертный разбор",
+        description: "Глубокий анализ темы с инсайтами",
+        branches: 5,
+        style: "educational",
+        content: JSON.stringify([
+          "Большинство людей неправильно понимают [тему]. Давайте разберёмся 🧵",
+          "Первое, что нужно знать: [ключевой факт]. Это меняет всё восприятие.",
+          "Но вот что действительно важно: [инсайт]. Исследования показывают...",
+          "Как это применить на практике? [конкретные шаги]",
+          "Сохраняйте тред и делитесь с теми, кому это полезно. Подписывайтесь для больше разборов."
+        ]),
+        status: "draft",
+        userId,
+      },
+      {
+        title: "История/Кейс",
+        description: "Формат storytelling с выводом",
+        branches: 5,
+        style: "storytelling",
+        content: JSON.stringify([
+          "В 2024 году [персонаж] принял решение, которое изменило всё. Вот что произошло:",
+          "Начало было обычным: [контекст ситуации]. Ничего не предвещало...",
+          "Но потом произошло [поворотный момент]. И вот здесь начинается самое интересное.",
+          "Результат? [итог истории]. Цифры говорят сами за себя.",
+          "Главный вывод: [мораль/урок]. Запомните это."
+        ]),
+        status: "draft",
+        userId,
+      },
+      {
+        title: "Топ-лист",
+        description: "Список советов или фактов",
+        branches: 5,
+        style: "casual",
+        content: JSON.stringify([
+          "5 вещей, которые я узнал о [теме] за последний год:",
+          "1. [Первый пункт]. Это кажется очевидным, но 90% людей это игнорируют.",
+          "2-3. [Второй и третий пункты]. Эти два связаны между собой...",
+          "4. [Четвёртый пункт]. Самый недооценённый совет в списке.",
+          "5. [Пятый пункт]. Сохраните этот тред — пригодится. Какой пункт для вас самый полезный?"
+        ]),
+        status: "draft",
+        userId,
+      },
+      {
+        title: "Разрушение мифов",
+        description: "Формат 'миф vs реальность'",
+        branches: 4,
+        style: "professional",
+        content: JSON.stringify([
+          "3 мифа о [теме], в которые до сих пор верят. Пора это исправить:",
+          "Миф 1: «[распространённое заблуждение]». Реальность: [факт с доказательством].",
+          "Миф 2: «[ещё одно заблуждение]». На самом деле: [правда].",
+          "Миф 3: «[третье заблуждение]». Данные говорят обратное: [статистика]. Какие мифы знаете вы?"
+        ]),
+        status: "draft",
+        userId,
+      },
+      {
+        title: "Пошаговая инструкция",
+        description: "Практический гайд с действиями",
+        branches: 5,
+        style: "educational",
+        content: JSON.stringify([
+          "Как [достичь цели] за 30 минут. Пошаговая инструкция:",
+          "Шаг 1: [первое действие]. Это занимает 5 минут. Важно: [нюанс].",
+          "Шаг 2: [второе действие]. Здесь большинство допускают ошибку — [типичная ошибка].",
+          "Шаг 3: [третье действие]. Профессиональный лайфхак: [совет].",
+          "Готово! Теперь вы знаете как [результат]. Сохраните и попробуйте сегодня."
+        ]),
+        status: "draft",
+        userId,
+      },
+    ];
+
+    const created = [];
+    for (const preset of presets) {
+      const template = await storage.createTemplate(preset as any);
+      created.push(template);
+    }
+    res.status(201).json(created);
+  });
+
   // ── Posts ──
   app.get("/api/posts", isAuthenticated, async (req, res) => {
     const userId = getUserId(req);
@@ -273,6 +360,37 @@ h1{color:#9b59b6}h2{color:#b07ed8;margin-top:28px}a{color:#9b59b6}</style></head
     res.json(updated);
   });
 
+  // ── User Niche ──
+  app.get("/api/user-niche", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const [niche] = await db.select().from(llmSettings).where(
+      and(eq(llmSettings.userId, userId), eq(llmSettings.provider, "user_niche"))
+    );
+    res.json({ niche: niche?.apiKey || "" });
+  });
+
+  app.post("/api/user-niche", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const { niche } = req.body;
+    const [existing] = await db.select().from(llmSettings).where(
+      and(eq(llmSettings.userId, userId), eq(llmSettings.provider, "user_niche"))
+    );
+    if (existing) {
+      await db.update(llmSettings).set({ apiKey: niche || "" }).where(eq(llmSettings.id, existing.id));
+    } else {
+      await db.insert(llmSettings).values({
+        userId,
+        provider: "user_niche",
+        modelId: "niche",
+        displayName: "Тема/Ниша пользователя",
+        apiKey: niche || "",
+        isDefault: false,
+        isActive: true,
+      });
+    }
+    res.json({ niche: niche || "" });
+  });
+
   // ── AI Generation ──
   app.post("/api/generate", isAuthenticated, async (req, res) => {
     try {
@@ -317,9 +435,15 @@ h1{color:#9b59b6}h2{color:#b07ed8;margin-top:28px}a{color:#9b59b6}</style></head
         }
       }
 
+      const [nicheRow] = await db.select().from(llmSettings).where(
+        and(eq(llmSettings.userId, userId), eq(llmSettings.provider, "user_niche"))
+      );
+      const userNiche = nicheRow?.apiKey || "";
+
       const systemPrompt = `You are MetaMill, an AI content generator for Threads (social media platform by Meta).
 Generate a thread chain with exactly ${branches || 5} posts.
 Each post should be under 500 characters.
+${userNiche ? `IMPORTANT: The user's niche/topic is: "${userNiche}". All content MUST be relevant to this niche.` : ""}
 ${style ? `Tone/style: ${style}` : ""}
 ${reference ? `Match the style of this reference: "${reference}"` : ""}
 ${directives ? `Additional directives: ${directives}` : ""}
@@ -918,11 +1042,16 @@ Write in Russian language.`;
         if (defaultSetting) llmSetting = defaultSetting;
       }
 
+      const [nicheRowR] = await db.select().from(llmSettings).where(
+        and(eq(llmSettings.userId, userId), eq(llmSettings.provider, "user_niche"))
+      );
+
       const result = await repurposeToThread(url, {
         branches: branches || 5,
         style,
         ...llmSetting,
         userId,
+        userNiche: nicheRowR?.apiKey || "",
       });
       res.json(result);
     } catch (error: any) {

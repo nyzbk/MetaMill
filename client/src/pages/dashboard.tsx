@@ -12,6 +12,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { Post, Account, Template, ScheduledJob } from "@shared/schema";
+import { HelpButton } from "@/components/help-button";
 
 function StatCard({ label, value, icon: Icon, accent }: { label: string; value: string | number; icon: any; accent?: boolean }) {
   return (
@@ -112,7 +113,17 @@ export default function Dashboard() {
   return (
     <div className="p-6 space-y-6 max-w-6xl">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Панель управления</h1>
+        <div className="flex items-center gap-2 flex-wrap">
+          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Панель управления</h1>
+          <HelpButton
+            title="Помощь: Панель управления"
+            sections={[
+              { title: "Что это?", content: "Главная страница с обзором всех ваших данных: количество постов, публикации за сегодня, запланированные задачи и подключённые аккаунты." },
+              { title: "Как пользоваться?", content: "Панель показывает общую статистику. Здесь вы видите последнюю активность и шаблоны. Используйте боковое меню слева для перехода в нужный раздел." },
+              { title: "С чего начать?", content: "1. Зайдите в «Настройки» → добавьте LLM провайдер (AI модель для генерации)\n2. Зайдите в «Аккаунты» → подключите Threads аккаунт\n3. Зайдите в «Шаблоны» → создайте или импортируйте шаблоны\n4. Зайдите в «AI Генератор» → создайте контент\n5. Зайдите в «Авто-постинг» → настройте автоматическую публикацию" },
+            ]}
+          />
+        </div>
         <p className="text-sm text-muted-foreground mt-1">Обзор производства контента</p>
       </div>
 

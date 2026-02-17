@@ -1,6 +1,9 @@
 import { storage } from "./storage";
 import { generateWithLlm } from "./llm";
 import { publishThreadChain } from "./threads-api";
+import { db } from "./db";
+import { llmSettings } from "@shared/schema";
+import { eq, and } from "drizzle-orm";
 import type { ScheduledJob } from "@shared/schema";
 
 const POLL_INTERVAL = 30_000;
@@ -186,9 +189,15 @@ async function generateContent(job: ScheduledJob, branchCount: number): Promise<
     }
   }
 
+  const [nicheRow] = await db.select().from(llmSettings).where(
+    and(eq(llmSettings.userId, job.userId || ""), eq(llmSettings.provider, "user_niche"))
+  );
+  const userNiche = nicheRow?.apiKey || "";
+
   const systemPrompt = `You are MetaMill, an AI content generator for Threads (social media platform by Meta).
 Generate a thread chain with exactly ${branchCount} posts.
 Each post should be under 500 characters.
+${userNiche ? `IMPORTANT: The user's niche/topic is: "${userNiche}". All content MUST be relevant to this niche.` : ""}
 ${job.style ? `Tone/style: ${job.style}` : ""}
 
 Return ONLY a valid JSON object in this exact format:
