@@ -1,16 +1,6 @@
 import OpenAI from "openai";
 import type { LlmSetting } from "@shared/schema";
 
-const openrouterClient = new OpenAI({
-  apiKey: process.env.OPENROUTER_API_KEY || process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
-});
-
-const groqClient = new OpenAI({
-  apiKey: process.env.GROQ_API_KEY,
-  baseURL: "https://api.groq.com/openai/v1",
-});
-
 const openaiClient = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
@@ -58,21 +48,17 @@ function getClientForProvider(setting: LlmSettingLike): OpenAI {
 
   switch (provider) {
     case "openrouter":
-      if (apiKey) {
-        return new OpenAI({
-          apiKey,
-          baseURL: "https://openrouter.ai/api/v1",
-        });
-      }
-      return openrouterClient;
+      if (!apiKey) throw new Error("API ключ OpenRouter не настроен. Добавьте свой ключ в настройках (openrouter.ai)");
+      return new OpenAI({
+        apiKey,
+        baseURL: "https://openrouter.ai/api/v1",
+      });
     case "groq":
-      if (apiKey) {
-        return new OpenAI({
-          apiKey,
-          baseURL: "https://api.groq.com/openai/v1",
-        });
-      }
-      return groqClient;
+      if (!apiKey) throw new Error("API ключ Groq не настроен. Добавьте свой ключ в настройках (console.groq.com)");
+      return new OpenAI({
+        apiKey,
+        baseURL: "https://api.groq.com/openai/v1",
+      });
     case "openai":
       if (apiKey) {
         return new OpenAI({ apiKey });
@@ -111,7 +97,7 @@ function getClientForProvider(setting: LlmSettingLike): OpenAI {
       });
     }
     default:
-      return openrouterClient;
+      throw new Error(`Неизвестный провайдер: ${provider}. Настройте провайдер в разделе Настройки.`);
   }
 }
 

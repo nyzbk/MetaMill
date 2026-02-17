@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Star, Trash2, Settings as SettingsIcon, Pencil, MoreHorizontal, Link2, Check, Loader2, Target } from "lucide-react";
+import { Plus, Star, Trash2, Settings as SettingsIcon, Pencil, MoreHorizontal, Link2, Check, Loader2, Target, ExternalLink, Zap, Key } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { LlmSetting } from "@shared/schema";
 import { HelpButton } from "@/components/help-button";
@@ -52,7 +52,7 @@ function needsBaseUrl(provider: string): boolean {
   return provider === "ollama" || provider === "custom";
 }
 
-function isOptionalApiKey(provider: string): boolean {
+function isFreeProviderWithOwnKey(provider: string): boolean {
   return provider === "openrouter" || provider === "groq";
 }
 
@@ -99,12 +99,8 @@ export default function Settings() {
         displayName,
         isActive,
       };
-      if (needsApiKey(provider)) {
-        if (apiKey) {
-          body.apiKey = apiKey;
-        } else if (!editId) {
-          body.apiKey = null;
-        }
+      if (needsApiKey(provider) && apiKey) {
+        body.apiKey = apiKey;
       }
       if (needsBaseUrl(provider) && baseUrl) {
         body.baseUrl = baseUrl;
@@ -243,7 +239,7 @@ export default function Settings() {
             title="Помощь: Настройки"
             sections={[
               { title: "Что это?", content: "Центральный раздел для настройки всех интеграций: AI модели (LLM провайдеры), Meta API ключи, Firecrawl, и ваша тема/ниша для генерации контента." },
-              { title: "LLM Провайдеры", content: "AI модели для генерации контента. Добавьте API ключ любого провайдера:\n— OpenRouter (свой ключ или системный)\n— Groq (бесплатные модели, сверхбыстрый инференс)\n— OpenAI (GPT)\n— Anthropic (Claude)\n— Google (Gemini)\n— xAI (Grok)\n— Ollama (локальные модели)\n\nOpenRouter и Groq: можно без ключа (системный лимит) или со своим (без ограничений).\nВыберите модель по умолчанию, нажав звёздочку." },
+              { title: "LLM Провайдеры", content: "AI модели для генерации контента. Добавьте свой API ключ провайдера:\n— Groq (бесплатные модели, сверхбыстрый инференс — console.groq.com)\n— OpenRouter (бесплатные модели — openrouter.ai)\n— OpenAI (GPT)\n— Anthropic (Claude)\n— Google (Gemini)\n— xAI (Grok)\n— Ollama (локальные модели)\n\nДля Groq и OpenRouter нужен свой бесплатный ключ — инструкция на странице настроек.\nВыберите модель по умолчанию, нажав звёздочку." },
               { title: "Meta API", content: "Введите App ID и App Secret из вашего приложения на developers.facebook.com. Без них невозможна публикация в Threads." },
               { title: "Firecrawl", content: "Опциональный сервис для улучшенного извлечения тредов по URL в разделе «Исследование». Без него используется бесплатный метод извлечения." },
               { title: "Тема/Ниша", content: "Задайте свою основную тему или нишу. Она будет автоматически добавляться во все запросы генерации AI — в генераторе, авто-постинге и переработке." },
@@ -254,8 +250,66 @@ export default function Settings() {
       </div>
 
       <div className="space-y-4">
+        <h2 className="text-lg font-semibold" data-testid="text-section-llm">LLM Провайдеры</h2>
+        <Card className="overflow-visible border-[hsl(263,70%,50%)]/20 bg-[hsl(263,70%,50%)]/5">
+          <CardContent className="p-5 space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-md bg-[hsl(263,70%,50%)]/15 flex items-center justify-center flex-shrink-0">
+                <Key className="w-5 h-5 text-[hsl(263,70%,60%)]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium">Как получить бесплатные API ключи</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Для генерации контента нужен ваш собственный API ключ. Два лучших бесплатных варианта:
+                </p>
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="p-3 rounded-md bg-muted/50">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Zap className="w-4 h-4 text-orange-400" />
+                  <span className="text-sm font-medium">Groq</span>
+                  <Badge variant="secondary" className="text-[10px]">Рекомендуем</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Сверхбыстрый инференс на LPU чипах. Бесплатные модели: Llama 4, Qwen 3, GPT OSS, Kimi K2.
+                </p>
+                <ol className="text-xs text-muted-foreground space-y-0.5 list-decimal list-inside mb-2">
+                  <li>Зайдите на console.groq.com</li>
+                  <li>Создайте аккаунт (Google/GitHub)</li>
+                  <li>API Keys — Create API Key</li>
+                  <li>Скопируйте ключ (gsk_...)</li>
+                </ol>
+                <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-[hsl(263,70%,60%)] hover:underline" data-testid="link-groq-keys">
+                  <ExternalLink className="w-3 h-3" />
+                  Получить ключ Groq
+                </a>
+              </div>
+              <div className="p-3 rounded-md bg-muted/50">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Zap className="w-4 h-4 text-blue-400" />
+                  <span className="text-sm font-medium">OpenRouter</span>
+                </div>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Агрегатор 200+ моделей. Бесплатные: Llama 3.3, DeepSeek, Gemini Flash, Mistral и др.
+                </p>
+                <ol className="text-xs text-muted-foreground space-y-0.5 list-decimal list-inside mb-2">
+                  <li>Зайдите на openrouter.ai</li>
+                  <li>Создайте аккаунт</li>
+                  <li>Settings — API Keys — Create Key</li>
+                  <li>Скопируйте ключ (sk-or-v1-...)</li>
+                </ol>
+                <a href="https://openrouter.ai/settings/keys" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-[hsl(263,70%,60%)] hover:underline" data-testid="link-openrouter-keys">
+                  <ExternalLink className="w-3 h-3" />
+                  Получить ключ OpenRouter
+                </a>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         <div className="flex items-center justify-between gap-4 flex-wrap">
-          <h2 className="text-lg font-semibold" data-testid="text-section-llm">LLM Провайдеры</h2>
+          <span />
           <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetForm(); }}>
             <DialogTrigger asChild>
               <Button data-testid="button-add-provider">
@@ -364,17 +418,24 @@ export default function Settings() {
 
                 {needsApiKey(provider) && (
                   <div className="space-y-2">
-                    <Label>API Ключ {isOptionalApiKey(provider) && <span className="text-muted-foreground font-normal">(свой ключ)</span>}</Label>
+                    <Label>API Ключ {isFreeProviderWithOwnKey(provider) && <span className="text-muted-foreground font-normal">(свой, бесплатный)</span>}</Label>
                     <Input
                       type="password"
-                      placeholder={isOptionalApiKey(provider) ? "Свой ключ для безлимитного использования..." : "Введите API ключ..."}
+                      placeholder="Введите API ключ..."
                       value={apiKey}
                       onChange={(e) => setApiKey(e.target.value)}
                       data-testid="input-api-key"
                     />
-                    {isOptionalApiKey(provider) && (
+                    {provider === "openrouter" && (
                       <p className="text-xs text-muted-foreground">
-                        {provider === "openrouter" ? "Без ключа — системный лимит. Со своим — без ограничений." : "Без ключа — системный лимит. Со своим — без ограничений."}
+                        Бесплатно. Получите ключ на{" "}
+                        <a href="https://openrouter.ai/settings/keys" target="_blank" rel="noopener noreferrer" className="text-[hsl(263,70%,60%)] underline">openrouter.ai/settings/keys</a>
+                      </p>
+                    )}
+                    {provider === "groq" && (
+                      <p className="text-xs text-muted-foreground">
+                        Бесплатно. Получите ключ на{" "}
+                        <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="text-[hsl(263,70%,60%)] underline">console.groq.com/keys</a>
                       </p>
                     )}
                   </div>
@@ -391,7 +452,7 @@ export default function Settings() {
                 <Button
                   className="w-full"
                   onClick={() => createMutation.mutate()}
-                  disabled={!provider || !modelId || !displayName || createMutation.isPending || (needsApiKey(provider) && !isOptionalApiKey(provider) && !apiKey)}
+                  disabled={!provider || !modelId || !displayName || createMutation.isPending || (needsApiKey(provider) && !apiKey)}
                   data-testid="button-submit-provider"
                 >
                   {createMutation.isPending ? "Сохранение..." : (editId ? "Обновить" : "Добавить")}

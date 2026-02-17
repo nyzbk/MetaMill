@@ -197,10 +197,7 @@ async function executeJob(job: ScheduledJob) {
 async function generateContent(job: ScheduledJob, branchCount: number): Promise<string[]> {
   const topic = job.topic || "интересный контент для Threads";
 
-  let llmSetting: { provider: string; modelId: string; apiKey?: string | null } = {
-    provider: "openrouter",
-    modelId: "meta-llama/llama-3.3-70b-instruct",
-  };
+  let llmSetting: { provider: string; modelId: string; apiKey?: string | null } | null = null;
 
   if (job.provider && job.modelId) {
     const allSettings = await storage.getLlmSettings(job.userId || "");
@@ -215,6 +212,10 @@ async function generateContent(job: ScheduledJob, branchCount: number): Promise<
     if (defaultSetting) {
       llmSetting = defaultSetting;
     }
+  }
+
+  if (!llmSetting) {
+    throw new Error("LLM провайдер не настроен. Добавьте провайдер со своим API ключом в разделе Настройки.");
   }
 
   const [nicheRow] = await db.select().from(llmSettings).where(

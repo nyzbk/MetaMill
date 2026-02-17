@@ -399,10 +399,7 @@ h1{color:#9b59b6}h2{color:#b07ed8;margin-top:28px}a{color:#9b59b6}</style></head
       const { topic, reference, style, branches, directives, provider, modelId, templateId } = req.body;
       if (!topic) return res.status(400).json({ message: "Topic is required" });
 
-      let llmSetting: { provider: string; modelId: string; apiKey?: string | null; baseUrl?: string | null } = {
-        provider: "openrouter",
-        modelId: "meta-llama/llama-3.3-70b-instruct",
-      };
+      let llmSetting: { provider: string; modelId: string; apiKey?: string | null; baseUrl?: string | null } | null = null;
 
       if (provider && modelId) {
         const allSettings = await storage.getLlmSettings(userId);
@@ -418,6 +415,10 @@ h1{color:#9b59b6}h2{color:#b07ed8;margin-top:28px}a{color:#9b59b6}</style></head
         if (defaultSetting) {
           llmSetting = defaultSetting;
         }
+      }
+
+      if (!llmSetting) {
+        return res.status(400).json({ message: "LLM провайдер не настроен. Добавьте провайдер со своим API ключом в разделе Настройки." });
       }
 
       let referenceContent = "";
@@ -1043,10 +1044,7 @@ Write in Russian language.`;
       const { url, branches, style, provider, modelId } = req.body;
       if (!url) return res.status(400).json({ message: "URL обязателен" });
 
-      let llmSetting: { provider: string; modelId: string; apiKey?: string | null; baseUrl?: string | null } = {
-        provider: "openrouter",
-        modelId: "meta-llama/llama-3.3-70b-instruct",
-      };
+      let llmSetting: { provider: string; modelId: string; apiKey?: string | null; baseUrl?: string | null } | null = null;
 
       if (provider && modelId) {
         const allSettings = await storage.getLlmSettings(userId);
@@ -1055,6 +1053,10 @@ Write in Russian language.`;
       } else {
         const defaultSetting = await storage.getDefaultLlmSetting(userId);
         if (defaultSetting) llmSetting = defaultSetting;
+      }
+
+      if (!llmSetting) {
+        return res.status(400).json({ message: "LLM провайдер не настроен. Добавьте провайдер со своим API ключом в разделе Настройки." });
       }
 
       const [nicheRowR] = await db.select().from(llmSettings).where(
