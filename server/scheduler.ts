@@ -3,9 +3,10 @@ import { generateWithLlm } from "./llm";
 import { publishThreadChain, fetchThreadInsights } from "./threads-api";
 import { notifyPublishSuccess, notifyPublishFailed } from "./notifications";
 import { db } from "./db";
-import { llmSettings } from "@shared/schema";
+import { llmSettings, commentCampaigns } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import type { ScheduledJob } from "@shared/schema";
+import { executeCommentCampaign } from "./auto-commenter";
 
 const POLL_INTERVAL = 30_000;
 let schedulerTimer: ReturnType<typeof setInterval> | null = null;
@@ -13,8 +14,12 @@ let isProcessing = false;
 
 export function startScheduler() {
   console.log("[scheduler] Background scheduler started (polling every 30s)");
-  schedulerTimer = setInterval(processDueJobs, POLL_INTERVAL);
+  schedulerTimer = setInterval(() => {
+    processDueJobs();
+    processCommentCampaigns();
+  }, POLL_INTERVAL);
   setTimeout(processDueJobs, 5000);
+  setTimeout(processCommentCampaigns, 10000);
 }
 
 export function stopScheduler() {
@@ -277,6 +282,56 @@ function parseCronToMs(expr: string): number {
     "every_week": 7 * 24 * 60 * 60 * 1000,
   };
   return intervals[expr] || 24 * 60 * 60 * 1000;
+}
+
+async function processCommentCampaigns() {
+  try {
+    const dueCampaigns = await storage.getDueCommentCampaigns();
+    if (dueCampaigns.length === 0) return;
+
+    console.log(`[scheduler] Found ${dueCampaigns.length} due comment campaign(s)`);
+
+    for (const campaign of dueCampaigns) {
+      try {
+        const account = await storage.getAccountById(campaign.accountId);
+        if (!account) {
+          console.warn(`[scheduler] Comment campaign ${campaign.id}: account #${campaign.accountId} not found`);
+          continue;
+        }
+
+        let llmSetting: any = null;
+        const defaultSetting = await storage.getDefaultLlmSetting(campaign.userId);
+        if (defaultSetting) {
+          llmSetting = defaultSetting;
+        } else {
+          const allSettings = await storage.getLlmSettings(campaign.userId);
+          const firstActive = allSettings.find(s => s.isActive && s.provider !== "firecrawl" && s.provider !== "user_niche");
+          if (firstActive) {
+            llmSetting = firstActive;
+          }
+        }
+
+        if (!llmSetting) {
+          console.warn(`[scheduler] Comment campaign ${campaign.id}: no LLM provider configured`);
+          continue;
+        }
+
+        const result = await executeCommentCampaign(campaign, account, llmSetting);
+        console.log(`[scheduler] Comment campaign ${campaign.id}: ${result.success} published, ${result.failed} failed`);
+
+        const intervalMs = (campaign.intervalMinutes || 60) * 60 * 1000;
+        const nextRun = new Date(Date.now() + intervalMs);
+        await storage.updateCommentCampaign(campaign.id, {
+          nextRunAt: nextRun,
+        } as any, campaign.userId);
+        console.log(`[scheduler] Comment campaign ${campaign.id}: next run at ${nextRun.toISOString()}`);
+      } catch (err: any) {
+        console.error(`[scheduler] Comment campaign ${campaign.id} failed:`, err.message);
+      }
+    }
+  } catch (err: any) {
+    console.error("[scheduler] Error processing comment campaigns:", err.message);
+  }
 }
 
 export function getSchedulerStatus() {

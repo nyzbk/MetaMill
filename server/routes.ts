@@ -1,5 +1,7 @@
 import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
+import path from "path";
+import fs from "fs";
 import { storage } from "./storage";
 import { insertAccountSchema, insertTemplateSchema, insertPostSchema, insertScheduledJobSchema, insertLlmSettingSchema, insertKeywordMonitorSchema, insertCommentCampaignSchema, llmSettings, keywordMonitors, monitorResults, commentCampaigns, commentLogs } from "@shared/schema";
 import { generateWithLlm, AVAILABLE_MODELS } from "./llm";
@@ -1455,7 +1457,7 @@ Generate a viral carousel about this topic. Make it engaging and actionable.`;
   app.put("/api/comment-campaigns/:id", isAuthenticated, async (req, res) => {
     const userId = getUserId(req);
     const id = parseInt(req.params.id as string);
-    const allowedFields = ["name", "targetKeywords", "commentStyle", "maxCommentsPerRun", "minDelaySeconds", "maxDelaySeconds", "accountId", "isActive"];
+    const allowedFields = ["name", "targetKeywords", "commentStyle", "commentStyles", "maxCommentsPerRun", "minDelaySeconds", "maxDelaySeconds", "accountId", "isActive", "intervalMinutes", "nextRunAt"];
     const sanitized: Record<string, any> = {};
     for (const key of allowedFields) {
       if (req.body[key] !== undefined) sanitized[key] = req.body[key];
@@ -1524,6 +1526,121 @@ Generate a viral carousel about this topic. Make it engaging and actionable.`;
     const userId = getUserId(req);
     const data = await storage.getAllCommentLogs(userId);
     res.json(data);
+  });
+
+  app.post("/api/upload-carousel-images", isAuthenticated, async (req, res) => {
+    try {
+      const { images } = req.body;
+      if (!images || !Array.isArray(images) || images.length === 0) {
+        return res.status(400).json({ message: "Нет изображений" });
+      }
+
+      const uploadDir = path.join(process.cwd(), "uploads", "carousel");
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+
+      const urls: string[] = [];
+      const timestamp = Date.now();
+
+      for (let i = 0; i < images.length; i++) {
+        const base64Data = images[i].replace(/^data:image\/\w+;base64,/, "");
+        const buffer = Buffer.from(base64Data, "base64");
+        const filename = `carousel_${timestamp}_${i}.png`;
+        const filePath = path.join(uploadDir, filename);
+        fs.writeFileSync(filePath, buffer);
+
+        let host = "";
+        if (process.env.REPLIT_DEPLOYMENT_URL) {
+          host = process.env.REPLIT_DEPLOYMENT_URL;
+          if (!host.startsWith("https://")) host = `https://${host}`;
+        } else if (process.env.REPLIT_DEV_DOMAIN) {
+          host = `https://${process.env.REPLIT_DEV_DOMAIN}`;
+        } else {
+          host = "http://localhost:5000";
+        }
+        urls.push(`${host}/uploads/carousel/${filename}`);
+      }
+
+      res.json({ urls });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/publish-instagram-carousel", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const { accountId, imageUrls, caption } = req.body;
+
+      if (!accountId || !imageUrls || !Array.isArray(imageUrls) || imageUrls.length < 2) {
+        return res.status(400).json({ message: "Нужен аккаунт и минимум 2 изображения" });
+      }
+      if (imageUrls.length > 10) {
+        return res.status(400).json({ message: "Максимум 10 изображений в карусели" });
+      }
+
+      const account = await storage.getAccount(accountId, userId);
+      if (!account) return res.status(404).json({ message: "Аккаунт не найден" });
+      if (!account.accessToken) return res.status(400).json({ message: "Аккаунт не подключён к Instagram API" });
+
+      const GRAPH_API = "https://graph.threads.net/v1.0";
+
+      const containerIds: string[] = [];
+      for (const imageUrl of imageUrls) {
+        const createRes = await fetch(`${GRAPH_API}/${account.threadsUserId}/threads`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            image_url: imageUrl,
+            media_type: "IMAGE",
+            is_carousel_item: true,
+            access_token: account.accessToken,
+          }),
+        });
+        const createData = await createRes.json();
+        if (createData.id) {
+          containerIds.push(createData.id);
+        } else {
+          throw new Error(createData.error?.message || `Ошибка создания контейнера для изображения`);
+        }
+      }
+
+      const carouselRes = await fetch(`${GRAPH_API}/${account.threadsUserId}/threads`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          media_type: "CAROUSEL",
+          children: containerIds.join(","),
+          text: caption || "",
+          access_token: account.accessToken,
+        }),
+      });
+      const carouselData = await carouselRes.json();
+      if (!carouselData.id) {
+        throw new Error(carouselData.error?.message || "Ошибка создания карусели");
+      }
+
+      await new Promise(r => setTimeout(r, 3000));
+
+      const publishRes = await fetch(`${GRAPH_API}/${account.threadsUserId}/threads_publish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          creation_id: carouselData.id,
+          access_token: account.accessToken,
+        }),
+      });
+      const publishData = await publishRes.json();
+
+      if (publishData.id) {
+        res.json({ success: true, mediaId: publishData.id });
+      } else {
+        throw new Error(publishData.error?.message || "Ошибка публикации карусели");
+      }
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
   });
 
   return httpServer;

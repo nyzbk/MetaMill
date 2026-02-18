@@ -49,6 +49,7 @@ export interface IStorage {
   claimJob(id: number): Promise<ScheduledJob | undefined>;
   updateJobInternal(id: number, data: Partial<InsertScheduledJob>): Promise<ScheduledJob | undefined>;
 
+  getDueCommentCampaigns(): Promise<CommentCampaign[]>;
   getCommentCampaigns(userId: string): Promise<CommentCampaign[]>;
   getCommentCampaign(id: number, userId: string): Promise<CommentCampaign | undefined>;
   createCommentCampaign(campaign: InsertCommentCampaign): Promise<CommentCampaign>;
@@ -201,6 +202,16 @@ export class DatabaseStorage implements IStorage {
   async updateJobInternal(id: number, data: Partial<InsertScheduledJob>) {
     const [j] = await db.update(scheduledJobs).set(data).where(eq(scheduledJobs.id, id)).returning();
     return j;
+  }
+
+  async getDueCommentCampaigns() {
+    const now = new Date();
+    return db.select().from(commentCampaigns).where(
+      and(
+        eq(commentCampaigns.isActive, true),
+        lte(commentCampaigns.nextRunAt, now)
+      )
+    );
   }
 
   async getCommentCampaigns(userId: string) {

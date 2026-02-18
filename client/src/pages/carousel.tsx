@@ -11,7 +11,7 @@ import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Sparkles, Loader2, Download, Image, Check, ArrowLeft, MoreHorizontal, Upload, Share2, Bookmark, ChevronLeft } from "lucide-react";
-import type { LlmSetting } from "@shared/schema";
+import type { LlmSetting, Account } from "@shared/schema";
 import { HelpButton } from "@/components/help-button";
 import { toPng } from "html-to-image";
 import JSZip from "jszip";
@@ -543,11 +543,18 @@ export default function Carousel() {
   const [selectedDesign, setSelectedDesign] = useState<CarouselDesign>("notes");
   const [carouselContent, setCarouselContent] = useState<CarouselContent | null>(null);
   const [isZipping, setIsZipping] = useState(false);
+  const [publishAccountId, setPublishAccountId] = useState("");
+  const [publishCaption, setPublishCaption] = useState("");
+  const [publishingCarousel, setPublishingCarousel] = useState(false);
 
   const slideRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   const { data: llmSettings } = useQuery<LlmSetting[]>({
     queryKey: ["/api/llm-settings"],
+  });
+
+  const { data: accounts } = useQuery<Account[]>({
+    queryKey: ["/api/accounts"],
   });
 
   const activeSettings = llmSettings?.filter(s => s.isActive && s.provider !== "firecrawl" && s.provider !== "user_niche") || [];
@@ -649,6 +656,43 @@ export default function Carousel() {
       setIsZipping(false);
     }
   }, [carouselContent, toast]);
+
+  const handlePublishCarousel = async () => {
+    if (!publishAccountId || slides.length === 0) return;
+    setPublishingCarousel(true);
+    try {
+      const images: string[] = [];
+      for (let i = 0; i < slides.length; i++) {
+        const el = document.getElementById(`carousel-slide-${i}`);
+        if (!el) continue;
+        const dataUrl = await toPng(el, { pixelRatio: 3 });
+        images.push(dataUrl);
+      }
+
+      if (images.length < 2) {
+        toast({ title: "Нужно минимум 2 слайда", variant: "destructive" });
+        return;
+      }
+
+      const uploadRes = await apiRequest("POST", "/api/upload-carousel-images", { images });
+      const { urls } = await uploadRes.json();
+
+      const publishRes = await apiRequest("POST", "/api/publish-instagram-carousel", {
+        accountId: parseInt(publishAccountId),
+        imageUrls: urls,
+        caption: publishCaption,
+      });
+      const result = await publishRes.json();
+
+      if (result.success) {
+        toast({ title: "Карусель опубликована!" });
+      }
+    } catch (error: any) {
+      toast({ title: "Ошибка публикации", description: error.message, variant: "destructive" });
+    } finally {
+      setPublishingCarousel(false);
+    }
+  };
 
   return (
     <div className="p-6 max-w-[1600px]">
@@ -806,6 +850,42 @@ export default function Carousel() {
               </CardContent>
             </Card>
           )}
+
+          {carouselContent && (
+            <Card className="overflow-visible">
+              <CardContent className="p-5 space-y-3">
+                <p className="text-sm font-medium">{"Опубликовать карусель"}</p>
+                <div className="flex gap-3 flex-wrap">
+                  <Select value={publishAccountId} onValueChange={setPublishAccountId}>
+                    <SelectTrigger className="flex-1 min-w-[180px]" data-testid="select-publish-account">
+                      <SelectValue placeholder="Выберите аккаунт..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accounts?.map(a => (
+                        <SelectItem key={a.id} value={String(a.id)}>@{a.username}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    placeholder="Подпись к карусели (необязательно)"
+                    value={publishCaption}
+                    onChange={e => setPublishCaption(e.target.value)}
+                    className="flex-1 min-w-[200px]"
+                    data-testid="input-publish-caption"
+                  />
+                </div>
+                <Button
+                  onClick={handlePublishCarousel}
+                  disabled={!publishAccountId || publishingCarousel}
+                  className="w-full"
+                  data-testid="button-publish-carousel"
+                >
+                  {publishingCarousel ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Share2 className="w-4 h-4 mr-2" />}
+                  {"Опубликовать в Threads"}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         <div>
@@ -821,6 +901,7 @@ export default function Carousel() {
                 {slides.map((slide, index) => (
                   <div key={index} className="group relative">
                     <div
+                      id={`carousel-slide-${index}`}
                       ref={(el) => {
                         slideRefs.current[index] = el;
                       }}

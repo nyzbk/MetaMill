@@ -1,4 +1,8 @@
 import type { Response } from "express";
+import { sendTelegramMessage } from "./telegram";
+import { db } from "./db";
+import { llmSettings } from "@shared/schema";
+import { eq, and } from "drizzle-orm";
 
 interface NotificationEvent {
   type: "publish_success" | "publish_failed" | "engagement_update";
@@ -46,12 +50,26 @@ export function sendNotification(userId: string, event: NotificationEvent) {
   });
 }
 
+async function sendTelegramNotification(userId: string, message: string) {
+  try {
+    const [tgConfig] = await db.select().from(llmSettings).where(
+      and(eq(llmSettings.userId, userId), eq(llmSettings.provider, "telegram_bot"))
+    );
+    if (tgConfig?.apiKey && tgConfig?.modelId) {
+      await sendTelegramMessage(tgConfig.apiKey, tgConfig.modelId, message);
+    }
+  } catch (error) {
+    console.error("Telegram notification error:", error);
+  }
+}
+
 export function notifyPublishSuccess(userId: string, postCount: number, accountUsername: string) {
   sendNotification(userId, {
     type: "publish_success",
     data: { postCount, accountUsername },
     timestamp: new Date().toISOString(),
   });
+  sendTelegramNotification(userId, `<b>MetaMill</b>\nТред опубликован!\nАккаунт: @${accountUsername}\nПостов: ${postCount}`);
 }
 
 export function notifyPublishFailed(userId: string, error: string, accountUsername: string) {
@@ -60,6 +78,7 @@ export function notifyPublishFailed(userId: string, error: string, accountUserna
     data: { error, accountUsername },
     timestamp: new Date().toISOString(),
   });
+  sendTelegramNotification(userId, `<b>MetaMill</b>\nОшибка публикации\nАккаунт: @${accountUsername}\nОшибка: ${error}`);
 }
 
 export function notifyEngagementUpdate(userId: string, postId: number, metrics: Record<string, number>) {

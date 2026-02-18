@@ -7,11 +7,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { MessageCircle, Plus, Trash2, Play, Pause, Loader2, Clock, ChevronDown, ChevronUp, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { MessageCircle, Plus, Trash2, Play, Pause, Loader2, Clock, ChevronDown, ChevronUp, CheckCircle, XCircle, AlertCircle, BarChart3, Timer, RefreshCw } from "lucide-react";
 import type { CommentCampaign, CommentLog, Account } from "@shared/schema";
 import { HelpButton } from "@/components/help-button";
 
@@ -23,8 +24,30 @@ const STYLES = [
   { value: "expert", label: "Экспертный" },
 ];
 
+const INTERVALS = [
+  { value: "0", label: "Вручную" },
+  { value: "60", label: "Каждый час" },
+  { value: "120", label: "Каждые 2 часа" },
+  { value: "240", label: "Каждые 4 часа" },
+  { value: "360", label: "Каждые 6 часов" },
+  { value: "720", label: "Каждые 12 часов" },
+  { value: "1440", label: "Ежедневно" },
+];
+
 function getStyleLabel(value: string) {
   return STYLES.find(s => s.value === value)?.label || value;
+}
+
+function getIntervalLabel(minutes: number) {
+  const item = INTERVALS.find(i => parseInt(i.value) === minutes);
+  if (item && item.value !== "0") return item.label;
+  if (minutes === 60) return "каждый час";
+  if (minutes === 120) return "каждые 2ч";
+  if (minutes === 240) return "каждые 4ч";
+  if (minutes === 360) return "каждые 6ч";
+  if (minutes === 720) return "каждые 12ч";
+  if (minutes === 1440) return "ежедневно";
+  return `каждые ${minutes}мин`;
 }
 
 function formatDate(d: string | Date | null | undefined) {
@@ -39,10 +62,11 @@ export default function AutoComments() {
   const [name, setName] = useState("");
   const [accountId, setAccountId] = useState("");
   const [keywords, setKeywords] = useState("");
-  const [style, setStyle] = useState("helpful");
+  const [selectedStyles, setSelectedStyles] = useState<string[]>(["helpful"]);
   const [maxComments, setMaxComments] = useState([3]);
   const [minDelay, setMinDelay] = useState("30");
   const [maxDelay, setMaxDelay] = useState("120");
+  const [interval_, setInterval_] = useState("0");
 
   const { data: campaigns, isLoading } = useQuery<CommentCampaign[]>({
     queryKey: ["/api/comment-campaigns"],
@@ -63,15 +87,22 @@ export default function AutoComments() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      await apiRequest("POST", "/api/comment-campaigns", {
+      const intervalMinutes = parseInt(interval_) || 0;
+      const body: any = {
         accountId: parseInt(accountId),
         name,
         targetKeywords: keywords,
-        commentStyle: style,
+        commentStyle: selectedStyles[0] || "helpful",
+        commentStyles: JSON.stringify(selectedStyles),
         maxCommentsPerRun: maxComments[0],
         minDelaySeconds: parseInt(minDelay) || 30,
         maxDelaySeconds: parseInt(maxDelay) || 120,
-      });
+        intervalMinutes,
+      };
+      if (intervalMinutes > 0) {
+        body.nextRunAt = new Date(Date.now() + intervalMinutes * 60 * 1000).toISOString();
+      }
+      await apiRequest("POST", "/api/comment-campaigns", body);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/comment-campaigns"] });
@@ -126,10 +157,32 @@ export default function AutoComments() {
     setName("");
     setAccountId("");
     setKeywords("");
-    setStyle("helpful");
+    setSelectedStyles(["helpful"]);
     setMaxComments([3]);
     setMinDelay("30");
     setMaxDelay("120");
+    setInterval_("0");
+  }
+
+  function toggleStyle(value: string) {
+    setSelectedStyles(prev => {
+      if (prev.includes(value)) {
+        if (prev.length === 1) return prev;
+        return prev.filter(s => s !== value);
+      }
+      return [...prev, value];
+    });
+  }
+
+  const styleCounts: Record<string, { total: number; published: number; failed: number }> = {};
+  if (allLogs) {
+    for (const log of allLogs) {
+      const s = log.commentStyle || "unknown";
+      if (!styleCounts[s]) styleCounts[s] = { total: 0, published: 0, failed: 0 };
+      styleCounts[s].total++;
+      if (log.status === "published") styleCounts[s].published++;
+      if (log.status === "failed") styleCounts[s].failed++;
+    }
   }
 
   if (isLoading) {
@@ -205,17 +258,27 @@ export default function AutoComments() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Стиль комментариев</Label>
-                <Select value={style} onValueChange={setStyle}>
-                  <SelectTrigger data-testid="select-campaign-style">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {STYLES.map(s => (
-                      <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Стили комментариев (A/B тестирование)</Label>
+                <div className="flex flex-wrap gap-2">
+                  {STYLES.map(s => (
+                    <label
+                      key={s.value}
+                      className="flex items-center gap-1.5 cursor-pointer"
+                      data-testid={`checkbox-style-${s.value}`}
+                    >
+                      <Checkbox
+                        checked={selectedStyles.includes(s.value)}
+                        onCheckedChange={() => toggleStyle(s.value)}
+                      />
+                      <span className="text-sm">{s.label}</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {selectedStyles.map(s => (
+                    <Badge key={s} variant="secondary" className="text-xs">{getStyleLabel(s)}</Badge>
+                  ))}
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>Комментариев за запуск: {maxComments[0]}</Label>
@@ -248,10 +311,23 @@ export default function AutoComments() {
                   />
                 </div>
               </div>
+              <div className="space-y-2">
+                <Label>Расписание</Label>
+                <Select value={interval_} onValueChange={setInterval_}>
+                  <SelectTrigger data-testid="select-campaign-interval">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {INTERVALS.map(i => (
+                      <SelectItem key={i.value} value={i.value}>{i.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <Button
                 className="w-full"
                 onClick={() => createMutation.mutate()}
-                disabled={createMutation.isPending || !name || !accountId || !keywords}
+                disabled={createMutation.isPending || !name || !accountId || !keywords || selectedStyles.length === 0}
                 data-testid="button-submit-campaign"
               >
                 {createMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
@@ -261,6 +337,51 @@ export default function AutoComments() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {allLogs && allLogs.length > 0 && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Card><CardContent className="p-4 text-center">
+              <p className="text-2xl font-bold" data-testid="stat-total-comments">{allLogs.length}</p>
+              <p className="text-xs text-muted-foreground">Всего комментариев</p>
+            </CardContent></Card>
+            <Card><CardContent className="p-4 text-center">
+              <p className="text-2xl font-bold text-green-500" data-testid="stat-published-comments">{allLogs.filter(l => l.status === "published").length}</p>
+              <p className="text-xs text-muted-foreground">Опубликовано</p>
+            </CardContent></Card>
+            <Card><CardContent className="p-4 text-center">
+              <p className="text-2xl font-bold text-destructive" data-testid="stat-failed-comments">{allLogs.filter(l => l.status === "failed").length}</p>
+              <p className="text-xs text-muted-foreground">Ошибки</p>
+            </CardContent></Card>
+            <Card><CardContent className="p-4 text-center">
+              <p className="text-2xl font-bold" data-testid="stat-campaigns-count">{campaigns?.length || 0}</p>
+              <p className="text-xs text-muted-foreground">Кампании</p>
+            </CardContent></Card>
+          </div>
+          {Object.keys(styleCounts).length > 0 && (
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <BarChart3 className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Статистика по стилям</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(styleCounts).map(([style, counts]) => (
+                    <Badge key={style} variant="outline" data-testid={`badge-style-stat-${style}`}>
+                      {getStyleLabel(style)}: {counts.published}/{counts.total}
+                      {counts.total > 0 && (
+                        <span className="ml-1 text-muted-foreground">
+                          ({Math.round((counts.published / counts.total) * 100)}%)
+                        </span>
+                      )}
+                    </Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
 
       {(!campaigns || campaigns.length === 0) && (
         <Card>
@@ -275,6 +396,12 @@ export default function AutoComments() {
         {campaigns?.map(c => {
           const isExpanded = expandedId === c.id;
           const keywordList = c.targetKeywords.split(",").map(k => k.trim()).filter(Boolean);
+          let campaignStyles: string[] = [];
+          if (c.commentStyles) {
+            try { campaignStyles = JSON.parse(c.commentStyles); } catch {}
+          }
+          if (campaignStyles.length === 0) campaignStyles = [c.commentStyle];
+
           return (
             <Card key={c.id} data-testid={`card-campaign-${c.id}`}>
               <CardContent className="p-4 space-y-3">
@@ -285,7 +412,9 @@ export default function AutoComments() {
                       <Badge variant={c.isActive ? "default" : "secondary"} data-testid={`badge-campaign-status-${c.id}`}>
                         {c.isActive ? "Активна" : "Пауза"}
                       </Badge>
-                      <Badge variant="outline">{getStyleLabel(c.commentStyle)}</Badge>
+                      {campaignStyles.map(s => (
+                        <Badge key={s} variant="outline" className="text-xs">{getStyleLabel(s)}</Badge>
+                      ))}
                     </div>
                     <div className="flex items-center gap-1 flex-wrap">
                       {keywordList.map((kw, i) => (
@@ -298,11 +427,23 @@ export default function AutoComments() {
                         <Clock className="w-3 h-3" />
                         {c.minDelaySeconds}-{c.maxDelaySeconds}с
                       </span>
+                      {c.intervalMinutes != null && c.intervalMinutes > 0 && (
+                        <span className="flex items-center gap-1" data-testid={`text-interval-${c.id}`}>
+                          <RefreshCw className="w-3 h-3" />
+                          Авто: {getIntervalLabel(c.intervalMinutes)}
+                        </span>
+                      )}
                       {c.totalComments != null && c.totalComments > 0 && (
                         <span>Всего: {c.totalComments}</span>
                       )}
                       {c.lastRunAt && (
                         <span>Запуск: {formatDate(c.lastRunAt)}</span>
+                      )}
+                      {c.nextRunAt && (
+                        <span className="flex items-center gap-1" data-testid={`text-next-run-${c.id}`}>
+                          <Timer className="w-3 h-3" />
+                          След.: {formatDate(c.nextRunAt)}
+                        </span>
                       )}
                     </div>
                   </div>
@@ -395,6 +536,9 @@ function LogEntry({ log, showCampaign, campaigns }: { log: CommentLog; showCampa
           <Badge variant={log.status === "published" ? "default" : log.status === "failed" ? "destructive" : "secondary"} className="text-xs">
             {log.status === "published" ? "Опубликован" : log.status === "failed" ? "Ошибка" : "Ожидание"}
           </Badge>
+          {log.commentStyle && (
+            <Badge variant="outline" className="text-xs">{getStyleLabel(log.commentStyle)}</Badge>
+          )}
           {showCampaign && campaignName && (
             <span className="text-xs text-muted-foreground">{campaignName}</span>
           )}

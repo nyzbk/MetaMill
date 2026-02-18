@@ -38,6 +38,12 @@ export async function executeCommentCampaign(
   );
   const userNiche = nicheRow?.apiKey || "";
 
+  let styles: string[] = [];
+  if (campaign.commentStyles) {
+    try { styles = JSON.parse(campaign.commentStyles); } catch {}
+  }
+  if (styles.length === 0) styles = [campaign.commentStyle];
+
   const keyword = keywords[Math.floor(Math.random() * keywords.length)];
   logs.push(`Поиск по: "${keyword}"`);
 
@@ -71,6 +77,7 @@ export async function executeCommentCampaign(
 
   for (let i = 0; i < targets.length; i++) {
     const thread = targets[i];
+    const currentStyle = styles[i % styles.length];
 
     if (i > 0) {
       const delay = randomDelay(campaign.minDelaySeconds * 1000, campaign.maxDelaySeconds * 1000);
@@ -81,7 +88,7 @@ export async function executeCommentCampaign(
     try {
       const commentText = await generateWithLlm(llmSetting, {
         systemPrompt: `Ты — автор комментариев в Threads. Пиши комментарии на русском языке.
-Стиль: ${styleMap[campaign.commentStyle] || styleMap.helpful}.
+Стиль: ${styleMap[currentStyle] || styleMap.helpful}.
 ${userNiche ? `Ниша автора: ${userNiche}.` : ""}
 Правила:
 - Комментарий должен быть КОРОТКИМ: 1-3 предложения (max 200 символов)
@@ -128,11 +135,12 @@ ${userNiche ? `Ниша автора: ${userNiche}.` : ""}
             targetThreadId: thread.id,
             targetThreadText: thread.text.substring(0, 500),
             commentText: cleanComment,
+            commentStyle: currentStyle,
             status: "published",
             threadsMediaId: publishData.id,
           });
           success++;
-          logs.push(`Комментарий опубликован к "${thread.text.substring(0, 50)}..."`);
+          logs.push(`Комментарий опубликован к "${thread.text.substring(0, 50)}..." (стиль: ${currentStyle})`);
         } else {
           throw new Error(publishData.error?.message || "Ошибка публикации");
         }
@@ -148,6 +156,7 @@ ${userNiche ? `Ниша автора: ${userNiche}.` : ""}
         targetThreadId: thread.id,
         targetThreadText: thread.text?.substring(0, 500) || "",
         commentText: "",
+        commentStyle: currentStyle,
         status: "failed",
         error: e.message,
       });
