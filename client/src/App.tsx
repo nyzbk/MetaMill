@@ -21,6 +21,8 @@ import Monitoring from "@/pages/monitoring";
 import MetaWizard from "@/pages/meta-wizard";
 import Repurpose from "@/pages/repurpose";
 import Analytics from "@/pages/analytics";
+import Carousel from "@/pages/carousel";
+import AutoComments from "@/pages/auto-comments";
 import Landing from "@/pages/landing";
 import NotFound from "@/pages/not-found";
 
@@ -38,6 +40,8 @@ function Router() {
       <Route path="/meta-wizard" component={MetaWizard} />
       <Route path="/repurpose" component={Repurpose} />
       <Route path="/analytics" component={Analytics} />
+      <Route path="/carousel" component={Carousel} />
+      <Route path="/auto-comments" component={AutoComments} />
       <Route path="/test" component={ThreadTest} />
       <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />

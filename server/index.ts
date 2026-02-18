@@ -4,6 +4,8 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { validateConfig } from "./threads-api";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 
 const app = express();
 const httpServer = createServer(app);
@@ -14,15 +16,56 @@ declare module "http" {
   }
 }
 
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+}));
+
+app.set("trust proxy", 1);
+
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Слишком много запросов. Попробуйте через минуту." },
+  skip: (req) => !req.path.startsWith("/api"),
+});
+
+const generateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Лимит генерации: 10 запросов в минуту. Подождите." },
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Слишком много попыток входа. Попробуйте позже." },
+});
+
+app.use(apiLimiter);
+app.use("/api/generate", generateLimiter);
+app.use("/api/generate-carousel", generateLimiter);
+app.use("/api/repurpose", generateLimiter);
+app.use(/\/api\/comment-campaigns\/\d+\/run/, generateLimiter);
+app.use("/api/login", authLimiter);
+app.use("/api/callback", authLimiter);
+
 app.use(
   express.json({
+    limit: "1mb",
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
   }),
 );
 
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {

@@ -1,11 +1,12 @@
 import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertAccountSchema, insertTemplateSchema, insertPostSchema, insertScheduledJobSchema, insertLlmSettingSchema, insertKeywordMonitorSchema, llmSettings, keywordMonitors, monitorResults } from "@shared/schema";
+import { insertAccountSchema, insertTemplateSchema, insertPostSchema, insertScheduledJobSchema, insertLlmSettingSchema, insertKeywordMonitorSchema, insertCommentCampaignSchema, llmSettings, keywordMonitors, monitorResults, commentCampaigns, commentLogs } from "@shared/schema";
 import { generateWithLlm, AVAILABLE_MODELS } from "./llm";
 import { getThreadsAuthUrl, exchangeCodeForToken, exchangeForLongLivedToken, getThreadsProfile, publishThreadChain, fetchThreadInsights } from "./threads-api";
 import { addSSEClient, notifyPublishSuccess, notifyPublishFailed, notifyEngagementUpdate } from "./notifications";
 import { getSchedulerStatus } from "./scheduler";
+import { executeCommentCampaign } from "./auto-commenter";
 import { searchThreadsByKeyword, getUserThreads, lookupThreadsUser, sortByEngagement, filterViralThreads, importThreadAsTemplate, importMultipleAsTemplate } from "./threads-scraper";
 import { getTrends, refreshTrends } from "./trends";
 import { repurposeToThread } from "./repurpose";
@@ -487,6 +488,96 @@ Write in Russian language.`;
     } catch (error: any) {
       console.error("AI generation error:", error);
       res.status(500).json({ message: error.message || "AI generation failed" });
+    }
+  });
+
+  // ── Carousel Generation ──
+  app.post("/api/generate-carousel", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const { topic, numSlides, ctaKeyword, provider, modelId } = req.body;
+      if (!topic) return res.status(400).json({ message: "Тема обязательна" });
+      const slideCount = Math.max(3, Math.min(10, numSlides || 5));
+
+      let llmSetting: { provider: string; modelId: string; apiKey?: string | null; baseUrl?: string | null } | null = null;
+
+      if (provider && modelId) {
+        const allSettings = await storage.getLlmSettings(userId);
+        const match = allSettings.find(s => s.provider === provider && s.modelId === modelId);
+        llmSetting = {
+          provider,
+          modelId,
+          apiKey: match?.apiKey || null,
+          baseUrl: match?.baseUrl || null,
+        };
+      } else {
+        const defaultSetting = await storage.getDefaultLlmSetting(userId);
+        if (defaultSetting) {
+          llmSetting = defaultSetting;
+        } else {
+          const allSettings = await storage.getLlmSettings(userId);
+          const firstActive = allSettings.find(s => s.isActive && s.provider !== "firecrawl" && s.provider !== "user_niche");
+          if (firstActive) {
+            llmSetting = firstActive;
+          }
+        }
+      }
+
+      if (!llmSetting) {
+        return res.status(400).json({ message: "LLM провайдер не настроен. Добавьте провайдер со своим API ключом в разделе Настройки." });
+      }
+
+      const [nicheRow] = await db.select().from(llmSettings).where(
+        and(eq(llmSettings.userId, userId), eq(llmSettings.provider, "user_niche"))
+      );
+      const userNiche = nicheRow?.apiKey || "";
+
+      const systemPrompt = `You are a carousel content generator for Threads/Instagram. Generate content in Russian.
+Return a JSON object with this EXACT structure:
+{
+  "first_page_title": "Hook title (max 75 chars, use CAPS for 1-2 power words)",
+  "content_pages": [
+    {
+      "title": "Numbered header (max 7 words)",
+      "intro_paragraph": "Short intro (max 15 words)",
+      "points": ["paragraph 1", "paragraph 2"],
+      "blockquote_text": "Result/consequence (max 15 words)"
+    }
+  ],
+  "call_to_action_page": {
+    "title": "CTA title",
+    "description": "Value proposition (max 10 words)"
+  }
+}
+Generate exactly ${slideCount} content_pages.`;
+
+      const userPrompt = `Topic: ${topic}
+CTA keyword: ${ctaKeyword || "ПОДПИШИСЬ"}
+${userNiche ? `User niche: ${userNiche}` : ""}
+Generate a viral carousel about this topic. Make it engaging and actionable.`;
+
+      const content = await generateWithLlm(llmSetting, {
+        systemPrompt,
+        userPrompt,
+        jsonMode: true,
+        maxTokens: 4096,
+      });
+
+      let parsed;
+      try {
+        parsed = JSON.parse(content);
+      } catch {
+        return res.status(500).json({ message: "Не удалось разобрать ответ AI. Попробуйте ещё раз." });
+      }
+
+      if (!parsed.first_page_title || !Array.isArray(parsed.content_pages) || !parsed.call_to_action_page) {
+        return res.status(500).json({ message: "AI вернул некорректную структуру. Попробуйте ещё раз." });
+      }
+
+      res.json(parsed);
+    } catch (error: any) {
+      console.error("Carousel generation error:", error);
+      res.status(500).json({ message: error.message || "Ошибка генерации карусели" });
     }
   });
 
@@ -1344,6 +1435,95 @@ Write in Russian language.`;
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
+  });
+
+  // ── Auto-Comment Campaigns ──
+  app.get("/api/comment-campaigns", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const data = await storage.getCommentCampaigns(userId);
+    res.json(data);
+  });
+
+  app.post("/api/comment-campaigns", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const parsed = insertCommentCampaignSchema.safeParse({ ...req.body, userId });
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const campaign = await storage.createCommentCampaign(parsed.data);
+    res.status(201).json(campaign);
+  });
+
+  app.put("/api/comment-campaigns/:id", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const id = parseInt(req.params.id as string);
+    const allowedFields = ["name", "targetKeywords", "commentStyle", "maxCommentsPerRun", "minDelaySeconds", "maxDelaySeconds", "accountId", "isActive"];
+    const sanitized: Record<string, any> = {};
+    for (const key of allowedFields) {
+      if (req.body[key] !== undefined) sanitized[key] = req.body[key];
+    }
+    const updated = await storage.updateCommentCampaign(id, sanitized, userId);
+    if (!updated) return res.status(404).json({ message: "Campaign not found" });
+    res.json(updated);
+  });
+
+  app.delete("/api/comment-campaigns/:id", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    await storage.deleteCommentCampaign(parseInt(req.params.id as string), userId);
+    res.status(204).send();
+  });
+
+  app.post("/api/comment-campaigns/:id/toggle", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const id = parseInt(req.params.id as string);
+    const campaign = await storage.getCommentCampaign(id, userId);
+    if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+    const updated = await storage.updateCommentCampaign(id, { isActive: !campaign.isActive } as any, userId);
+    res.json(updated);
+  });
+
+  app.post("/api/comment-campaigns/:id/run", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const id = parseInt(req.params.id as string);
+      const campaign = await storage.getCommentCampaign(id, userId);
+      if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+
+      const account = await storage.getAccount(campaign.accountId, userId);
+      if (!account) return res.status(400).json({ message: "Аккаунт не найден" });
+
+      let llmSetting: any = null;
+      const defaultSetting = await storage.getDefaultLlmSetting(userId);
+      if (defaultSetting) {
+        llmSetting = defaultSetting;
+      } else {
+        const allSettings = await storage.getLlmSettings(userId);
+        const firstActive = allSettings.find(s => s.isActive && s.provider !== "firecrawl" && s.provider !== "user_niche");
+        if (firstActive) {
+          llmSetting = firstActive;
+        }
+      }
+
+      if (!llmSetting) {
+        return res.status(400).json({ message: "LLM провайдер не настроен. Добавьте провайдер в настройках." });
+      }
+
+      const result = await executeCommentCampaign(campaign, account, llmSetting);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/comment-campaigns/:id/logs", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const id = parseInt(req.params.id as string);
+    const data = await storage.getCommentLogs(id, userId);
+    res.json(data);
+  });
+
+  app.get("/api/comment-logs", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const data = await storage.getAllCommentLogs(userId);
+    res.json(data);
   });
 
   return httpServer;

@@ -2,11 +2,14 @@ import { db } from "./db";
 import { eq, desc, and, lte, or, isNull } from "drizzle-orm";
 import {
   accounts, templates, posts, scheduledJobs, llmSettings,
+  commentCampaigns, commentLogs,
   type Account, type InsertAccount,
   type Template, type InsertTemplate,
   type Post, type InsertPost,
   type ScheduledJob, type InsertScheduledJob,
   type LlmSetting, type InsertLlmSetting,
+  type CommentCampaign, type InsertCommentCampaign,
+  type CommentLog, type InsertCommentLog,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -45,6 +48,16 @@ export interface IStorage {
   getDueJobs(): Promise<ScheduledJob[]>;
   claimJob(id: number): Promise<ScheduledJob | undefined>;
   updateJobInternal(id: number, data: Partial<InsertScheduledJob>): Promise<ScheduledJob | undefined>;
+
+  getCommentCampaigns(userId: string): Promise<CommentCampaign[]>;
+  getCommentCampaign(id: number, userId: string): Promise<CommentCampaign | undefined>;
+  createCommentCampaign(campaign: InsertCommentCampaign): Promise<CommentCampaign>;
+  updateCommentCampaign(id: number, data: Partial<InsertCommentCampaign>, userId: string): Promise<CommentCampaign | undefined>;
+  deleteCommentCampaign(id: number, userId: string): Promise<void>;
+  getCommentLogs(campaignId: number, userId: string): Promise<CommentLog[]>;
+  getAllCommentLogs(userId: string): Promise<CommentLog[]>;
+  createCommentLog(log: InsertCommentLog): Promise<CommentLog>;
+  updateCommentLog(id: number, data: Partial<InsertCommentLog>): Promise<CommentLog | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -188,6 +201,39 @@ export class DatabaseStorage implements IStorage {
   async updateJobInternal(id: number, data: Partial<InsertScheduledJob>) {
     const [j] = await db.update(scheduledJobs).set(data).where(eq(scheduledJobs.id, id)).returning();
     return j;
+  }
+
+  async getCommentCampaigns(userId: string) {
+    return db.select().from(commentCampaigns).where(eq(commentCampaigns.userId, userId)).orderBy(desc(commentCampaigns.createdAt));
+  }
+  async getCommentCampaign(id: number, userId: string) {
+    const [c] = await db.select().from(commentCampaigns).where(and(eq(commentCampaigns.id, id), eq(commentCampaigns.userId, userId)));
+    return c;
+  }
+  async createCommentCampaign(data: InsertCommentCampaign) {
+    const [c] = await db.insert(commentCampaigns).values(data).returning();
+    return c;
+  }
+  async updateCommentCampaign(id: number, data: Partial<InsertCommentCampaign>, userId: string) {
+    const [c] = await db.update(commentCampaigns).set(data).where(and(eq(commentCampaigns.id, id), eq(commentCampaigns.userId, userId))).returning();
+    return c;
+  }
+  async deleteCommentCampaign(id: number, userId: string) {
+    await db.delete(commentCampaigns).where(and(eq(commentCampaigns.id, id), eq(commentCampaigns.userId, userId)));
+  }
+  async getCommentLogs(campaignId: number, userId: string) {
+    return db.select().from(commentLogs).where(and(eq(commentLogs.campaignId, campaignId), eq(commentLogs.userId, userId))).orderBy(desc(commentLogs.createdAt));
+  }
+  async getAllCommentLogs(userId: string) {
+    return db.select().from(commentLogs).where(eq(commentLogs.userId, userId)).orderBy(desc(commentLogs.createdAt));
+  }
+  async createCommentLog(data: InsertCommentLog) {
+    const [c] = await db.insert(commentLogs).values(data).returning();
+    return c;
+  }
+  async updateCommentLog(id: number, data: Partial<InsertCommentLog>) {
+    const [c] = await db.update(commentLogs).set(data).where(eq(commentLogs.id, id)).returning();
+    return c;
   }
 }
 

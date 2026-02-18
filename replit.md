@@ -13,7 +13,7 @@ MetaMill is an industrial AI-powered content automation platform for Threads.net
 - **Design**: Dark futuristic theme (black #000000 background, purple accent hsl(263,70%,50%), Inter + JetBrains Mono fonts)
 
 ## Project Structure
-- `shared/schema.ts` - All Drizzle table definitions (re-exports auth users/sessions, accounts, templates, posts, scheduled_jobs, llm_settings, conversations, messages, trend_items, keyword_monitors, monitor_results). All data tables have `userId` column for per-user isolation
+- `shared/schema.ts` - All Drizzle table definitions (re-exports auth users/sessions, accounts, templates, posts, scheduled_jobs, llm_settings, conversations, messages, trend_items, keyword_monitors, monitor_results, comment_campaigns, comment_logs). All data tables have `userId` column for per-user isolation
 - `shared/models/auth.ts` - Auth schema (users, sessions tables) — mandatory for Replit Auth
 - `server/replit_integrations/auth/` - Auth module (setupAuth, isAuthenticated middleware, authStorage, registerAuthRoutes)
 - `server/routes.ts` - All API routes (CRUD + AI generation + OAuth + publishing + scheduler control + trends + monitoring + repurpose). All routes protected with isAuthenticated middleware
@@ -26,6 +26,7 @@ MetaMill is an industrial AI-powered content automation platform for Threads.net
 - `server/scheduler.ts` - Background scheduler: polls for due jobs, generates content via AI, publishes to Threads, handles recurring jobs
 - `server/trends.ts` - Trend aggregator: fetches from HackerNews, Reddit, TechCrunch RSS
 - `server/repurpose.ts` - Content repurposing engine: extracts content from URLs, converts to thread chains via AI (SSRF protected)
+- `server/auto-commenter.ts` - Auto-comment engine: keyword search, LLM comment generation, Threads API reply posting, human-like delays
 - `server/seed.ts` - Seed data (3 accounts, 3 templates, 6 posts, 3 scheduled jobs)
 - `server/db.ts` - Database connection pool
 - `client/src/App.tsx` - Main app with sidebar layout, all routes
@@ -63,6 +64,9 @@ MetaMill is an industrial AI-powered content automation platform for Threads.net
 25. Engagement metrics from Threads API — likes, replies, reposts, quotes, views fetched via /threads/{id}/insights, stored in posts table, displayed in analytics
 26. Real-time push notifications via SSE — toast notifications when posts are published or fail, auto-refreshes analytics
 27. CSV analytics export — download all post data with engagement metrics as CSV file
+28. Carousel generator — AI generates carousel content (hook, content slides, CTA), 4 design themes, HTML-to-image rendering at 375x469px, editable slides, individual/ZIP download
+29. Security hardening — helmet HTTP headers, express-rate-limit (60/min API, 10/min generation, 20/15min auth), 1mb request size limits
+30. Auto-commenting — campaign-based auto-commenting via Threads API, LLM-generated contextual comments, 5 comment styles, human-like random delays, activity logging
 
 ## Auth Routes (Replit Auth)
 - GET `/api/login` - Begin OIDC login flow
@@ -111,6 +115,12 @@ MetaMill is an industrial AI-powered content automation platform for Threads.net
 - GET `/api/analytics/export` - Download CSV file with all posts and engagement metrics
 - POST `/api/engagement/refresh` - Fetch latest engagement metrics from Threads API for published posts
 - GET `/api/notifications/stream` - SSE stream for real-time push notifications
+- GET/POST `/api/comment-campaigns` - Comment campaign CRUD
+- PUT/DELETE `/api/comment-campaigns/:id` - Update/delete campaign
+- POST `/api/comment-campaigns/:id/toggle` - Toggle campaign active/paused
+- POST `/api/comment-campaigns/:id/run` - Manually trigger campaign execution
+- GET `/api/comment-campaigns/:id/logs` - Get campaign comment logs
+- GET `/api/comment-logs` - Get all comment logs for user
 
 ## Security Notes
 - Multi-user data isolation: all CRUD operations scoped by userId (from req.user.claims.sub)

@@ -30,6 +30,8 @@ import {
   BookOpen,
   Link2,
   BarChart3,
+  Image,
+  MessageCircle,
 } from "lucide-react";
 
 const mainItems = [
@@ -42,8 +44,10 @@ const mainItems = [
 ];
 
 const toolItems = [
+  { title: "Карусели", url: "/carousel", icon: Image },
   { title: "Тренды", url: "/trends", icon: TrendingUp },
   { title: "Мониторинг", url: "/monitoring", icon: Radar },
+  { title: "Авто-комменты", url: "/auto-comments", icon: MessageCircle },
   { title: "Переработка", url: "/repurpose", icon: Link2 },
   { title: "Исследование", url: "/research", icon: Search },
   { title: "Тест треда", url: "/test", icon: FlaskConical },

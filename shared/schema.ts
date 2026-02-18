@@ -182,4 +182,49 @@ export const insertLlmSettingSchema = createInsertSchema(llmSettings).omit({
 export type InsertLlmSetting = z.infer<typeof insertLlmSettingSchema>;
 export type LlmSetting = typeof llmSettings.$inferSelect;
 
+export const commentCampaigns = pgTable("comment_campaigns", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  accountId: integer("account_id").notNull(),
+  name: text("name").notNull(),
+  targetKeywords: text("target_keywords").notNull(),
+  commentStyle: text("comment_style").notNull().default("helpful"),
+  maxCommentsPerRun: integer("max_comments_per_run").notNull().default(3),
+  minDelaySeconds: integer("min_delay_seconds").notNull().default(30),
+  maxDelaySeconds: integer("max_delay_seconds").notNull().default(120),
+  isActive: boolean("is_active").default(true).notNull(),
+  lastRunAt: timestamp("last_run_at"),
+  totalComments: integer("total_comments").default(0),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertCommentCampaignSchema = createInsertSchema(commentCampaigns).omit({
+  id: true,
+  createdAt: true,
+  lastRunAt: true,
+  totalComments: true,
+});
+export type InsertCommentCampaign = z.infer<typeof insertCommentCampaignSchema>;
+export type CommentCampaign = typeof commentCampaigns.$inferSelect;
+
+export const commentLogs = pgTable("comment_logs", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").notNull(),
+  userId: text("user_id").notNull(),
+  targetThreadId: text("target_thread_id"),
+  targetThreadText: text("target_thread_text"),
+  commentText: text("comment_text").notNull(),
+  status: text("status").notNull().default("pending"),
+  threadsMediaId: text("threads_media_id"),
+  error: text("error"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertCommentLogSchema = createInsertSchema(commentLogs).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertCommentLog = z.infer<typeof insertCommentLogSchema>;
+export type CommentLog = typeof commentLogs.$inferSelect;
+
 export { conversations, messages } from "./models/chat";
