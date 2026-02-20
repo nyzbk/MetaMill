@@ -54,8 +54,10 @@ const toolItems = [
 ];
 
 const systemItems = [
+  { title: "Партнёрам", url: "/partner", icon: Users },
   { title: "Meta API", url: "/meta-wizard", icon: BookOpen },
   { title: "Настройки", url: "/settings", icon: Settings },
+  { title: "Админка", url: "/admin", icon: LayoutDashboard },
 ];
 
 export function AppSidebar() {
