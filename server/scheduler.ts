@@ -12,6 +12,11 @@ const POLL_INTERVAL = 30_000;
 let schedulerTimer: ReturnType<typeof setInterval> | null = null;
 let isProcessing = false;
 
+export async function runScheduledTasks() {
+  console.log("[scheduler] Running scheduled tasks via external trigger");
+  await Promise.all([processDueJobs(), processCommentCampaigns()]);
+}
+
 export function startScheduler() {
   console.log("[scheduler] Background scheduler started (polling every 30s)");
   schedulerTimer = setInterval(() => {

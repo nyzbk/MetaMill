@@ -9,6 +9,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { useNotifications } from "@/hooks/use-notifications";
 import { Loader2 } from "lucide-react";
 import Dashboard from "@/pages/dashboard";
+import Pricing from "@/pages/pricing";
+import Partners from "@/pages/partners";
 import Accounts from "@/pages/accounts";
 import Templates from "@/pages/templates";
 import Generator from "@/pages/generator";
@@ -25,11 +27,15 @@ import Carousel from "@/pages/carousel";
 import AutoComments from "@/pages/auto-comments";
 import Landing from "@/pages/landing";
 import NotFound from "@/pages/not-found";
+import AdminPanel from "@/pages/admin-panel";
+import PartnerDashboard from "@/pages/partner-dashboard";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Dashboard} />
+      <Route path="/pricing" component={Pricing} />
+      <Route path="/partners" component={Partners} />
       <Route path="/accounts" component={Accounts} />
       <Route path="/templates" component={Templates} />
       <Route path="/generator" component={Generator} />
@@ -44,6 +50,8 @@ function Router() {
       <Route path="/auto-comments" component={AutoComments} />
       <Route path="/test" component={ThreadTest} />
       <Route path="/settings" component={SettingsPage} />
+      <Route path="/admin" component={AdminPanel} />
+      <Route path="/partner" component={PartnerDashboard} />
       <Route component={NotFound} />
     </Switch>
   );

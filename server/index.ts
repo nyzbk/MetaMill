@@ -107,58 +107,80 @@ app.use((req, res, next) => {
   next();
 });
 
-(async () => {
-  await setupAuth(app);
-  registerAuthRoutes(app);
+// Export app for serverless use
+export { app };
 
-  const threadsConfig = validateConfig();
-  if (!threadsConfig.valid) {
-    console.warn("[startup] Threads API:", threadsConfig.errors.join(", "));
-  }
+let setupPromise: Promise<void> | null = null;
 
-  if (process.env.NODE_ENV !== "production") {
-    const { seedDatabase } = await import("./seed");
-    try {
-      await seedDatabase();
-    } catch (e) {
-      console.error("Seed error (non-fatal):", e);
-    }
-  }
+export const setup = () => {
+  if (setupPromise) return setupPromise;
 
-  await registerRoutes(httpServer, app);
+  setupPromise = (async () => {
+    await setupAuth(app);
+    registerAuthRoutes(app);
 
-  const { startScheduler } = await import("./scheduler");
-  startScheduler();
-
-  app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
-    console.error("Internal Server Error:", err);
-
-    if (res.headersSent) {
-      return next(err);
+    const threadsConfig = validateConfig();
+    if (!threadsConfig.valid) {
+      console.warn("[startup] Threads API:", threadsConfig.errors.join(", "));
     }
 
-    return res.status(status).json({ message });
+    if (process.env.NODE_ENV !== "production") {
+      const { seedDatabase } = await import("./seed");
+      try {
+        await seedDatabase();
+      } catch (e) {
+        console.error("Seed error (non-fatal):", e);
+      }
+    }
+
+    await registerRoutes(httpServer, app);
+
+    const { startScheduler } = await import("./scheduler");
+    if (!process.env.VERCEL) {
+      // Only start background scheduler if NOT on Vercel (Vercel uses Cron API route)
+      startScheduler();
+    }
+
+    app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+      const status = err.status || err.statusCode || 500;
+      const message = err.message || "Internal Server Error";
+
+      console.error("Internal Server Error:", err);
+
+      if (res.headersSent) {
+        return next(err);
+      }
+
+      return res.status(status).json({ message });
+    });
+
+    if (process.env.NODE_ENV === "production" || process.env.VERCEL) {
+      // On Vercel or Prod, we might need static serving if we don't use 'rewrites' to index.html exclusively
+      // But if we route everything to API, we should let Express handle it or 404
+      // For now, keep serveStatic
+      serveStatic(app);
+    } else {
+      const { setupVite } = await import("./vite");
+      await setupVite(httpServer, app);
+    }
+  })();
+
+  return setupPromise;
+};
+
+// Only start listening if executed directly (not imported)
+if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+  setup().then(() => {
+    const port = parseInt(process.env.PORT || "5000", 10);
+    httpServer.listen(
+      {
+        port,
+        host: "0.0.0.0",
+        reusePort: true,
+      },
+      () => {
+        log(`serving on port ${port}`);
+      },
+    );
   });
-
-  if (process.env.NODE_ENV === "production") {
-    serveStatic(app);
-  } else {
-    const { setupVite } = await import("./vite");
-    await setupVite(httpServer, app);
-  }
-
-  const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    () => {
-      log(`serving on port ${port}`);
-    },
-  );
-})();
+}

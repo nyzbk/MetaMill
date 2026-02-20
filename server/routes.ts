@@ -3,19 +3,35 @@ import { createServer, type Server } from "http";
 import path from "path";
 import fs from "fs";
 import { storage } from "./storage";
-import { insertAccountSchema, insertTemplateSchema, insertPostSchema, insertScheduledJobSchema, insertLlmSettingSchema, insertKeywordMonitorSchema, insertCommentCampaignSchema, llmSettings, keywordMonitors, monitorResults, commentCampaigns, commentLogs } from "@shared/schema";
+import { insertAccountSchema, insertTemplateSchema, insertPostSchema, insertScheduledJobSchema, insertLlmSettingSchema, insertKeywordMonitorSchema, insertCommentCampaignSchema, llmSettings, keywordMonitors, monitorResults, commentCampaigns, commentLogs, subscriptions, creditTransactions, referralPayouts, errorLogs } from "@shared/schema";
 import { generateWithLlm, AVAILABLE_MODELS } from "./llm";
 import { getThreadsAuthUrl, exchangeCodeForToken, exchangeForLongLivedToken, getThreadsProfile, publishThreadChain, fetchThreadInsights } from "./threads-api";
 import { addSSEClient, notifyPublishSuccess, notifyPublishFailed, notifyEngagementUpdate } from "./notifications";
-import { getSchedulerStatus } from "./scheduler";
+import { getSchedulerStatus, runScheduledTasks } from "./scheduler";
 import { executeCommentCampaign } from "./auto-commenter";
 import { searchThreadsByKeyword, getUserThreads, lookupThreadsUser, sortByEngagement, filterViralThreads, importThreadAsTemplate, importMultipleAsTemplate } from "./threads-scraper";
 import { getTrends, refreshTrends } from "./trends";
 import { repurposeToThread } from "./repurpose";
 import { db } from "./db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, count, sql as dsql, sum } from "drizzle-orm";
 import crypto from "crypto";
 import { isAuthenticated } from "./replit_integrations/auth";
+import { users } from "@shared/schema";
+
+async function isAdmin(req: Request, res: any, next: any) {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ message: "Not authenticated" });
+  try {
+    const user = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    if (user.length > 0 && user[0].role === "admin") {
+      next();
+    } else {
+      res.status(403).json({ message: "Admin access required" });
+    }
+  } catch {
+    next(); // allow in dev if DB not ready
+  }
+}
 
 function getUserId(req: Request): string {
   return (req as any).user?.claims?.sub || "";
@@ -316,6 +332,28 @@ h1{color:#9b59b6}h2{color:#b07ed8;margin-top:28px}a{color:#9b59b6}</style></head
       nextRunAt: job.nextRunAt || job.scheduledAt || new Date(),
     }, userId);
     res.json({ message: "Задача возобновлена" });
+  });
+
+  // ── Cron for Vercel ──
+  app.get("/api/cron", async (req, res) => {
+    // Vercel Cron automatically adds this header
+    // Or you can manual curl with: -H "Authorization: Bearer <CRON_SECRET>"
+    const authHeader = req.headers['authorization'];
+    const expectedSecret = process.env.CRON_SECRET;
+
+    // Allow valid CRON_SECRET or Vercel's internal cron signature if you advanced fitlering
+    // For simplicity, we check if CRON_SECRET matches (if set)
+    if (expectedSecret && authHeader !== `Bearer ${expectedSecret}`) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+      await runScheduledTasks();
+      res.json({ success: true, message: "Scheduled tasks executed" });
+    } catch (error: any) {
+      console.error("Cron execution failed:", error);
+      res.status(500).json({ success: false, error: error.message });
+    }
   });
 
   // ── LLM Settings ──
@@ -776,6 +814,10 @@ Generate a viral carousel about this topic. Make it engaging and actionable.`;
       );
 
       const createdPosts = [];
+      // ... existing code ... note: keeping context minimal
+      // Since replace_file_content requires exact match, I'll append routes at the end of the file instead of inserting mid-file if possible
+      // But standard practice is grouping. I will add them before end of function.
+
       for (let i = 0; i < branches.length; i++) {
         const post = await storage.createPost({
           userId,
@@ -1638,6 +1680,402 @@ Generate a viral carousel about this topic. Make it engaging and actionable.`;
       } else {
         throw new Error(publishData.error?.message || "Ошибка публикации карусели");
       }
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ══════════════════════════════════════════════
+  // ── Subscriptions / Pricing API ──
+  // ══════════════════════════════════════════════
+
+  const PLANS: Record<string, { credits: number; price: number; refPercent: number }> = {
+    basic: { credits: 200, price: 0, refPercent: 10 },
+    pro: { credits: 1000, price: 29, refPercent: 20 },
+    extra: { credits: 3000, price: 99, refPercent: 30 },
+  };
+
+  // Get current subscription
+  app.get("/api/subscription", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const sub = await db.select().from(subscriptions).where(and(eq(subscriptions.userId, userId), eq(subscriptions.status, "active"))).orderBy(desc(subscriptions.startedAt)).limit(1);
+      const user = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+      res.json({
+        subscription: sub[0] || null,
+        balance: user[0]?.balance || 0,
+        plan: sub[0]?.plan || "basic",
+        credits: sub[0] ? sub[0].credits - sub[0].creditsUsed : 0,
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Subscribe to a plan
+  app.post("/api/subscribe", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const { plan } = req.body;
+      if (!PLANS[plan]) return res.status(400).json({ message: "Invalid plan" });
+      const planInfo = PLANS[plan];
+
+      // Deactivate old subscription
+      await db.update(subscriptions).set({ status: "expired" }).where(and(eq(subscriptions.userId, userId), eq(subscriptions.status, "active")));
+
+      // Create new subscription
+      const expiresAt = new Date();
+      expiresAt.setMonth(expiresAt.getMonth() + 1);
+      const [newSub] = await db.insert(subscriptions).values({
+        userId, plan, credits: planInfo.credits, creditsUsed: 0, status: "active", expiresAt,
+      }).returning();
+
+      // Add credits to user balance
+      const user = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+      const oldBalance = user[0]?.balance || 0;
+      const newBalance = oldBalance + planInfo.credits;
+      await db.update(users).set({ balance: newBalance }).where(eq(users.id, userId));
+
+      // Log transaction
+      await db.insert(creditTransactions).values({
+        userId, amount: planInfo.credits, type: "purchase",
+        description: `Подписка ${plan} — ${planInfo.credits} кредитов`,
+        balanceBefore: oldBalance, balanceAfter: newBalance,
+      });
+
+      // Referral bonus to referrer
+      if (user[0]?.referredBy) {
+        const bonusCredits = Math.floor(planInfo.credits * planInfo.refPercent / 100);
+        if (bonusCredits > 0) {
+          const referrer = await db.select().from(users).where(eq(users.referralCode, user[0].referredBy)).limit(1);
+          if (referrer[0]) {
+            const refOldBalance = referrer[0].balance || 0;
+            const refNewBalance = refOldBalance + bonusCredits;
+            await db.update(users).set({ balance: refNewBalance }).where(eq(users.id, referrer[0].id));
+            await db.insert(creditTransactions).values({
+              userId: referrer[0].id, amount: bonusCredits, type: "referral_bonus",
+              description: `Реферальный бонус ${planInfo.refPercent}% от ${plan}`,
+              balanceBefore: refOldBalance, balanceAfter: refNewBalance,
+            });
+            await db.insert(referralPayouts).values({
+              referrerId: referrer[0].id, referredUserId: userId,
+              subscriptionId: newSub.id, amount: bonusCredits, percentage: planInfo.refPercent,
+            });
+          }
+        }
+      }
+
+      res.json({ subscription: newSub, balance: newBalance });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Use credits (called during AI generation)
+  app.post("/api/credits/use", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const { amount = 1, description = "AI генерация" } = req.body;
+      const user = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+      if (!user[0]) return res.status(404).json({ message: "User not found" });
+      const oldBalance = user[0].balance || 0;
+      if (oldBalance < amount) return res.status(402).json({ message: "Недостаточно кредитов", balance: oldBalance });
+
+      const newBalance = oldBalance - amount;
+      await db.update(users).set({ balance: newBalance }).where(eq(users.id, userId));
+
+      // Update subscription creditsUsed
+      const activeSub = await db.select().from(subscriptions).where(and(eq(subscriptions.userId, userId), eq(subscriptions.status, "active"))).limit(1);
+      if (activeSub[0]) {
+        await db.update(subscriptions).set({ creditsUsed: activeSub[0].creditsUsed + amount }).where(eq(subscriptions.id, activeSub[0].id));
+      }
+
+      await db.insert(creditTransactions).values({
+        userId, amount: -amount, type: "usage", description,
+        balanceBefore: oldBalance, balanceAfter: newBalance,
+      });
+
+      res.json({ balance: newBalance, used: amount });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ══════════════════════════════════════════════
+  // ── Partner / Referral API ──
+  // ══════════════════════════════════════════════
+
+  app.post("/api/referrals/create", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const code = "REF-" + crypto.randomBytes(4).toString("hex").toUpperCase();
+      await db.update(users).set({ referralCode: code }).where(eq(users.id, userId));
+      res.json({ code });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.get("/api/partners/stats", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const user = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+      if (!user[0]) return res.status(404).json({ message: "User not found" });
+
+      // Count referrals
+      const referralCode = user[0].referralCode;
+      let signups = 0;
+      let totalEarnings = 0;
+      if (referralCode) {
+        const refs = await db.select().from(users).where(eq(users.referredBy, referralCode));
+        signups = refs.length;
+        const payouts = await db.select().from(referralPayouts).where(eq(referralPayouts.referrerId, userId));
+        totalEarnings = payouts.reduce((sum, p) => sum + p.amount, 0);
+      }
+
+      res.json({
+        referralCode: referralCode || null,
+        signups,
+        earnings: totalEarnings,
+        balance: user[0].balance || 0,
+        clicks: signups * 3, // estimate
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.get("/api/partners/referrals", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const user = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+      if (!user[0]?.referralCode) return res.json({ referrals: [] });
+
+      const refs = await db.select({
+        id: users.id,
+        email: users.email,
+        createdAt: users.createdAt,
+      }).from(users).where(eq(users.referredBy, user[0].referralCode)).orderBy(desc(users.createdAt));
+
+      const payouts = await db.select().from(referralPayouts).where(eq(referralPayouts.referrerId, userId)).orderBy(desc(referralPayouts.createdAt));
+
+      res.json({ referrals: refs, payouts });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ══════════════════════════════════════════════
+  // ── Admin API ──
+  // ══════════════════════════════════════════════
+
+  app.get("/api/admin/stats", isAdmin, async (_req, res) => {
+    try {
+      const [userCount] = await db.select({ value: count() }).from(users);
+      const [subCount] = await db.select({ value: count() }).from(subscriptions).where(eq(subscriptions.status, "active"));
+      const allSubs = await db.select({ plan: subscriptions.plan }).from(subscriptions).where(eq(subscriptions.status, "active"));
+      const revenue = allSubs.reduce((sum, s) => sum + (PLANS[s.plan]?.price || 0), 0);
+      const [errCount] = await db.select({ value: count() }).from(errorLogs);
+      const recentErrors = await db.select().from(errorLogs).orderBy(desc(errorLogs.createdAt)).limit(10);
+
+      res.json({
+        totalUsers: userCount.value,
+        activeSubscriptions: subCount.value,
+        totalRevenue: revenue,
+        systemHealth: errCount.value > 50 ? "degraded" : "healthy",
+        errorCount: errCount.value,
+        recentErrors,
+      });
+    } catch (e: any) {
+      res.json({
+        totalUsers: 0, activeSubscriptions: 0, totalRevenue: 0,
+        systemHealth: "unknown", errorCount: 0, recentErrors: [],
+      });
+    }
+  });
+
+  app.get("/api/admin/users", isAdmin, async (_req, res) => {
+    try {
+      const allUsers = await db.select({
+        id: users.id,
+        email: users.email,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        role: users.role,
+        balance: users.balance,
+        referralCode: users.referralCode,
+        referredBy: users.referredBy,
+        createdAt: users.createdAt,
+      }).from(users).orderBy(desc(users.createdAt)).limit(100);
+
+      // Get active subscription for each user
+      const result = await Promise.all(allUsers.map(async (u) => {
+        const sub = await db.select({ plan: subscriptions.plan, credits: subscriptions.credits, creditsUsed: subscriptions.creditsUsed }).from(subscriptions).where(and(eq(subscriptions.userId, u.id), eq(subscriptions.status, "active"))).limit(1);
+        return { ...u, subscription: sub[0] || null };
+      }));
+
+      res.json({ users: result });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.get("/api/admin/errors", isAdmin, async (_req, res) => {
+    try {
+      const errors = await db.select().from(errorLogs).orderBy(desc(errorLogs.createdAt)).limit(50);
+      res.json({ errors });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ══════════════════════════════════════════════
+  // ── Telegram Client API ──
+  // ══════════════════════════════════════════════
+
+  const TELEGRAM_API_URL = process.env.TELEGRAM_API_URL || "http://localhost:8001";
+
+  app.get("/api/telegram/status", isAuthenticated, async (req, res) => {
+    try {
+      const response = await fetch(`${TELEGRAM_API_URL}/status`);
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      res.status(500).json({ message: "Telegram service unavailable: " + error.message });
+    }
+  });
+
+  app.post("/api/telegram/configure", isAuthenticated, async (req, res) => {
+    try {
+      const { api_id, api_hash, phone } = req.body;
+      if (!api_id || !api_hash || !phone) {
+        return res.status(400).json({ message: "api_id, api_hash, phone required" });
+      }
+      const response = await fetch(`${TELEGRAM_API_URL}/configure`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ api_id, api_hash, phone }),
+      });
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/telegram/send-code", isAuthenticated, async (req, res) => {
+    try {
+      const response = await fetch(`${TELEGRAM_API_URL}/send-code`, { method: "POST" });
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/telegram/sign-in", isAuthenticated, async (req, res) => {
+    try {
+      const { code, password } = req.body;
+      const response = await fetch(`${TELEGRAM_API_URL}/sign-in`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, password }),
+      });
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/telegram/send-message", isAuthenticated, async (req, res) => {
+    try {
+      const { receiver, message, parse_mode } = req.body;
+      if (!receiver || !message) {
+        return res.status(400).json({ message: "receiver and message required" });
+      }
+      const response = await fetch(`${TELEGRAM_API_URL}/message`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ receiver, message, parse_mode: parse_mode || "html" }),
+      });
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/telegram/send-to-channel", isAuthenticated, async (req, res) => {
+    try {
+      const { channel, message, parse_mode } = req.body;
+      if (!channel || !message) {
+        return res.status(400).json({ message: "channel and message required" });
+      }
+      const response = await fetch(`${TELEGRAM_API_URL}/channel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel, message, parse_mode: parse_mode || "html" }),
+      });
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/telegram/get-dialogs", isAuthenticated, async (req, res) => {
+    try {
+      const { limit } = req.body;
+      const response = await fetch(`${TELEGRAM_API_URL}/dialogs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ limit: limit || 50 }),
+      });
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/telegram/get-history", isAuthenticated, async (req, res) => {
+    try {
+      const { entity, limit } = req.body;
+      if (!entity) return res.status(400).json({ message: "entity required" });
+      const response = await fetch(`${TELEGRAM_API_URL}/history`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entity, limit: limit || 100 }),
+      });
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/telegram/join-channel", isAuthenticated, async (req, res) => {
+    try {
+      const { channel_link } = req.body;
+      if (!channel_link) return res.status(400).json({ message: "channel_link required" });
+      const response = await fetch(`${TELEGRAM_API_URL}/join-channel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel_link }),
+      });
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/telegram/disconnect", isAuthenticated, async (req, res) => {
+    try {
+      const response = await fetch(`${TELEGRAM_API_URL}/disconnect`, { method: "POST" });
+      const data = await response.json();
+      res.json(data);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

@@ -66,6 +66,56 @@ export async function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
+  // Local development bypass
+  if (!process.env.REPL_ID) {
+    app.get("/api/login", (req, res) => {
+      // Create a mock user session
+      const user = {
+        id: "dev-user",
+        email: "dev@local.host",
+        firstName: "Dev",
+        lastName: "User",
+        profileImageUrl: "https://placehold.co/400",
+        expires_at: Date.now() + 24 * 60 * 60 * 1000,
+        access_token: "mock_token",
+        refresh_token: "mock_refresh_token",
+        claims: {
+          sub: "dev-user",
+          email: "dev@local.host",
+          first_name: "Dev",
+          last_name: "User",
+          profile_image_url: "https://placehold.co/400",
+          exp: Math.floor(Date.now() / 1000) + 86400
+        }
+      };
+
+      req.login(user, (err) => {
+        if (err) {
+          console.error("Mock login error:", err);
+          return res.redirect("/");
+        }
+        return res.redirect("/");
+      });
+    });
+
+    app.get("/api/logout", (req, res) => {
+      req.logout(() => {
+        res.redirect("/");
+      });
+    });
+
+    // Ensure mock user exists in DB
+    upsertUser({
+      sub: "dev-user",
+      email: "dev@local.host",
+      first_name: "Dev",
+      last_name: "User",
+      profile_image_url: "https://placehold.co/400"
+    }).catch(console.error);
+
+    return;
+  }
+
   const config = await getOidcConfig();
 
   const verify: VerifyFunction = async (
@@ -131,6 +181,25 @@ export async function setupAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
+  // Local bypass
+  if (!process.env.REPL_ID) {
+    if (req.isAuthenticated()) {
+      return next();
+    }
+    // If not authenticated in session yet, try to auto-login simply by proceeding? 
+    // No, we should force them to hit /api/login to set component state if needed, 
+    // but for API calls often 'next' is safer if we attach user. 
+    // However, passport session strategy is best. 
+    // Let's rely on the session established by /api/login in the dev block above.
+
+    // Fallback: If no session, just mock it on the fly for laziness? 
+    // Better to encourage hitting login. 
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized (Local Dev: Go to /api/login)" });
+    }
+    return next();
+  }
+
   const user = req.user as any;
 
   if (!req.isAuthenticated() || !user.expires_at) {

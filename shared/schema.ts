@@ -231,4 +231,78 @@ export const insertCommentLogSchema = createInsertSchema(commentLogs).omit({
 export type InsertCommentLog = z.infer<typeof insertCommentLogSchema>;
 export type CommentLog = typeof commentLogs.$inferSelect;
 
+// ── Subscriptions / Pricing ──
+export const subscriptions = pgTable("subscriptions", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  plan: text("plan").notNull().default("basic"), // basic, pro, extra
+  credits: integer("credits").notNull().default(200),
+  creditsUsed: integer("credits_used").notNull().default(0),
+  status: text("status").notNull().default("active"), // active, expired, cancelled
+  startedAt: timestamp("started_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  expiresAt: timestamp("expires_at"),
+});
+
+export const insertSubscriptionSchema = createInsertSchema(subscriptions).omit({
+  id: true,
+  startedAt: true,
+});
+export type InsertSubscription = z.infer<typeof insertSubscriptionSchema>;
+export type Subscription = typeof subscriptions.$inferSelect;
+
+// ── Credit Transactions ──
+export const creditTransactions = pgTable("credit_transactions", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  amount: integer("amount").notNull(), // positive = add, negative = deduct
+  type: text("type").notNull(), // purchase, usage, referral_bonus, signup_bonus
+  description: text("description"),
+  balanceBefore: integer("balance_before").notNull().default(0),
+  balanceAfter: integer("balance_after").notNull().default(0),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertCreditTransactionSchema = createInsertSchema(creditTransactions).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertCreditTransaction = z.infer<typeof insertCreditTransactionSchema>;
+export type CreditTransaction = typeof creditTransactions.$inferSelect;
+
+// ── Referral Payouts ──
+export const referralPayouts = pgTable("referral_payouts", {
+  id: serial("id").primaryKey(),
+  referrerId: text("referrer_id").notNull(),
+  referredUserId: text("referred_user_id").notNull(),
+  subscriptionId: integer("subscription_id"),
+  amount: integer("amount").notNull(), // in credits
+  percentage: integer("percentage").notNull().default(30),
+  status: text("status").notNull().default("pending"), // pending, paid
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertReferralPayoutSchema = createInsertSchema(referralPayouts).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertReferralPayout = z.infer<typeof insertReferralPayoutSchema>;
+export type ReferralPayout = typeof referralPayouts.$inferSelect;
+
+// ── Error Logs (for admin panel) ──
+export const errorLogs = pgTable("error_logs", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id"),
+  endpoint: text("endpoint"),
+  errorMessage: text("error_message").notNull(),
+  stackTrace: text("stack_trace"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertErrorLogSchema = createInsertSchema(errorLogs).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertErrorLog = z.infer<typeof insertErrorLogSchema>;
+export type ErrorLog = typeof errorLogs.$inferSelect;
+
 export { conversations, messages } from "./models/chat";
