@@ -1,0 +1,19 @@
+config:
+  target: "http://localhost:5000"
+  phases:
+    - duration: 60
+      arrivalRate: 5
+      rampTo: 20
+      name: "Warm up phase"
+    - duration: 60
+      arrivalRate: 20
+      name: "Sustained load"
+scenarios:
+  - name: "Visit landing page"
+    flow:
+      - get:
+          url: "/"
+  - name: "Health check or API"
+    flow:
+      - get:
+          url: "/api/llm-models"

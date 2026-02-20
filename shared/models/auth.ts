@@ -20,6 +20,7 @@ export const users = pgTable("users", {
   email: varchar("email").unique(),
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
+  password: text("password"),
   profileImageUrl: varchar("profile_image_url"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   referralCode: text("referral_code").unique(),

@@ -3,7 +3,7 @@ import path from "path";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
+import { setupAuth } from "./auth";
 import { validateConfig } from "./threads-api";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -116,8 +116,7 @@ export const setup = () => {
   if (setupPromise) return setupPromise;
 
   setupPromise = (async () => {
-    await setupAuth(app);
-    registerAuthRoutes(app);
+    setupAuth(app);
 
     const threadsConfig = validateConfig();
     if (!threadsConfig.valid) {
@@ -141,11 +140,23 @@ export const setup = () => {
       startScheduler();
     }
 
-    app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+    app.use((err: any, req: Request, res: Response, next: NextFunction) => {
       const status = err.status || err.statusCode || 500;
       const message = err.message || "Internal Server Error";
 
       console.error("Internal Server Error:", err);
+
+      // Attempt to save to DB asynchronously
+      import("./db").then(({ db }) => {
+        import("@shared/schema").then(({ errorLogs }) => {
+          db.insert(errorLogs).values({
+            errorMessage: message,
+            endpoint: req.originalUrl || req.path,
+            stackTrace: err.stack,
+            userId: (req as any).user?.id || null
+          }).execute().catch(e => console.error("Failed to write to errorLogs:", e));
+        });
+      }).catch(e => console.error("Failed to load DB in error handler", e));
 
       if (res.headersSent) {
         return next(err);

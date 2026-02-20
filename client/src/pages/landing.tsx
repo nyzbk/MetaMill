@@ -15,7 +15,7 @@ export default function Landing() {
             <span className="block text-[10px] text-muted-foreground font-mono tracking-wider">ФАБРИКА КОНТЕНТА</span>
           </div>
         </div>
-        <a href="/api/login" data-testid="button-login-header">
+        <a href="/auth" data-testid="button-login-header">
           <Button>Войти</Button>
         </a>
       </header>
@@ -37,7 +37,7 @@ export default function Landing() {
           </p>
 
           <div className="flex items-center justify-center gap-3 flex-wrap pt-4">
-            <a href="/api/login" data-testid="button-login-hero">
+            <a href="/auth" data-testid="button-login-hero">
               <Button size="lg">
                 <Sparkles className="w-4 h-4 mr-2" />
                 Начать работу

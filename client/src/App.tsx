@@ -29,6 +29,7 @@ import Landing from "@/pages/landing";
 import NotFound from "@/pages/not-found";
 import AdminPanel from "@/pages/admin-panel";
 import PartnerDashboard from "@/pages/partner-dashboard";
+import AuthPage from "@/pages/auth-page";
 
 function Router() {
   return (
@@ -94,7 +95,12 @@ function AppContent() {
   }
 
   if (!user) {
-    return <Landing />;
+    return (
+      <Switch>
+        <Route path="/auth" component={AuthPage} />
+        <Route component={Landing} />
+      </Switch>
+    );
   }
 
   return <AuthenticatedApp />;

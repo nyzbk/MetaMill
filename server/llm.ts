@@ -1,10 +1,18 @@
 import OpenAI from "openai";
 import type { LlmSetting } from "@shared/schema";
 
-const openaiClient = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+// Lazy load OpenAI client to prevent startup crash if keys are missing
+function getOpenAIClient() {
+  const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+  if (!apiKey) return null;
+
+  return new OpenAI({
+    apiKey,
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  });
+}
+
+const openaiClient = getOpenAIClient();
 
 interface LlmGenerateOptions {
   systemPrompt: string;
@@ -63,7 +71,9 @@ function getClientForProvider(setting: LlmSettingLike): OpenAI {
       if (apiKey) {
         return new OpenAI({ apiKey });
       }
-      return openaiClient;
+      const defaultClient = getOpenAIClient();
+      if (!defaultClient) throw new Error("API ключ OpenAI не настроен в переменных окружения");
+      return defaultClient;
     case "anthropic":
       if (!apiKey) throw new Error("API ключ Anthropic не настроен");
       return new OpenAI({

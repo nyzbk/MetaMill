@@ -15,7 +15,7 @@ import { repurposeToThread } from "./repurpose";
 import { db } from "./db";
 import { eq, and, desc, count, sql as dsql, sum } from "drizzle-orm";
 import crypto from "crypto";
-import { isAuthenticated } from "./replit_integrations/auth";
+import { isAuthenticated } from "./auth";
 import { users } from "@shared/schema";
 
 async function isAdmin(req: Request, res: any, next: any) {
@@ -34,7 +34,7 @@ async function isAdmin(req: Request, res: any, next: any) {
 }
 
 function getUserId(req: Request): string {
-  return (req as any).user?.claims?.sub || "";
+  return (req as any).user?.id || "";
 }
 
 export async function registerRoutes(
