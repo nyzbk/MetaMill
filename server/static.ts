@@ -3,9 +3,9 @@ import fs from "fs";
 import path from "path";
 
 // Support both ES module and CommonJS environments
-const dirname = typeof __dirname !== 'undefined' 
-  ? __dirname 
-  : path.dirname(new URL(import.meta.url).pathname);
+const dirname = typeof __dirname !== 'undefined'
+  ? __dirname
+  : path.dirname(new URL(eval('import.meta.url')).pathname);
 
 export function serveStatic(app: Express) {
   let distPath = path.resolve(dirname, "public");
