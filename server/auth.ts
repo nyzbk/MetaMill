@@ -12,8 +12,8 @@ export function getSession() {
     const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
     const pgStore = connectPg(session);
     const sessionStore = new pgStore({
-        conString: process.env.DATABASE_URL,
-        createTableIfMissing: false,
+        conString: process.env.DATABASE_URL || "", // Avoid crashing if missing
+        createTableIfMissing: true,
         ttl: sessionTtl,
         tableName: "sessions",
     });
@@ -92,13 +92,17 @@ export function setupAuth(app: Express) {
 
             const salt = await bcrypt.genSalt(10);
             const hashedPassword = await bcrypt.hash(password, salt);
+            const role = email === "ultaultimatum@gmail.com" ? "admin" : "user";
+            const referralCodeGenerated = Math.random().toString(36).substring(2, 10).toUpperCase();
 
             const newUserArr = await db.insert(users).values({
                 email,
                 password: hashedPassword,
                 firstName: firstName || "",
                 lastName: lastName || "",
+                referralCode: referralCodeGenerated,
                 referredBy: referralCode || null,
+                role,
             }).returning();
 
             const user = newUserArr[0];
