@@ -3,7 +3,9 @@ import fs from "fs";
 import path from "path";
 
 // Support both ES module and CommonJS environments
-const dirname = typeof __dirname !== 'undefined' ? __dirname : import.meta.dirname;
+const dirname = typeof __dirname !== 'undefined' 
+  ? __dirname 
+  : path.dirname(new URL(import.meta.url).pathname);
 
 export function serveStatic(app: Express) {
   let distPath = path.resolve(dirname, "public");
@@ -26,7 +28,10 @@ export function serveStatic(app: Express) {
   app.use(express.static(distPath));
 
   // fall through to index.html if the file doesn't exist
-  app.use("/{*path}", (_req, res) => {
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/api")) {
+      return next();
+    }
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 }
