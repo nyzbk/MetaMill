@@ -2,10 +2,11 @@ import express, { type Express } from "express";
 import fs from "fs";
 import path from "path";
 
-// Support both ES module and CommonJS environments
+// In a bundled CJS environment, __dirname is available. 
+// In Vite/ESM development, process.cwd() is used as fallback.
 const dirname = typeof __dirname !== 'undefined'
   ? __dirname
-  : path.dirname(new URL(eval('import.meta.url')).pathname);
+  : process.cwd();
 
 export function serveStatic(app: Express) {
   let distPath = path.resolve(dirname, "public");

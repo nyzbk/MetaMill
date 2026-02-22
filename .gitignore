@@ -7,3 +7,5 @@ vite.config.ts.*
 .env
 cookies.txt
 .ruff_cache
+.vercel
+.env*.local
