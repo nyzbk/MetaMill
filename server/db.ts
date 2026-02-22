@@ -11,5 +11,8 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL || "" });
+// Export db instance and pool
+// Instead of empty string which causes "Invalid URL" crash, use a safe dummy string or skip instantiation
+const connString = process.env.DATABASE_URL || "postgres://dummy:dummy@localhost:5432/dummy";
+export const pool = new Pool({ connectionString: connString });
 export const db = drizzle(pool, { schema });

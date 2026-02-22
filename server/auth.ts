@@ -12,7 +12,7 @@ export function getSession() {
     const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
     const pgStore = connectPg(session);
     const sessionStore = new pgStore({
-        conString: process.env.DATABASE_URL || "", // Avoid crashing if missing
+        conString: process.env.DATABASE_URL || "postgres://dummy:dummy@localhost:5432/dummy", // Prevent "Invalid URL" crash
         createTableIfMissing: true,
         ttl: sessionTtl,
         tableName: "sessions",
