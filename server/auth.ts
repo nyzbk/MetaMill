@@ -111,8 +111,13 @@ export function setupAuth(app: Express) {
                 if (err) return next(err);
                 return res.status(201).json(user);
             });
-        } catch (error) {
-            next(error);
+        } catch (error: any) {
+            console.error("Registration error:", error);
+            // Don't crash Express on DB conflicts or bcrypt errors, always return JSON
+            return res.status(500).json({
+                message: "Registration failed due to a server error",
+                details: error?.message || "Unknown error"
+            });
         }
     });
 

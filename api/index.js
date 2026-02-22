@@ -1,4 +1,4 @@
-import { app, setup } from "../server/index";
+import { app, setup } from "../dist/index.cjs";
 
 let isSetup = false;
 
